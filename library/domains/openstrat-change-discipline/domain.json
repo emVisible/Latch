@@ -1,0 +1,42 @@
+{
+  "name": "openstrat-change-discipline",
+  "description": "改 Openstrat 前必须走过的关卡",
+  "mount": {
+    "repos": ["openstrat_rn"],
+    "when": ["plan", "edit", "commit"]
+  },
+  "steps": [
+    {
+      "id": "read-agents",
+      "kind": "read",
+      "paths": ["AGENTS.md"]
+    },
+    {
+      "id": "no-new-useeffect",
+      "kind": "assert",
+      "script": "steps/no-new-useeffect.mjs"
+    },
+    {
+      "id": "no-tab-keepalive",
+      "kind": "assert",
+      "script": "steps/no-tab-keepalive.mjs"
+    },
+    {
+      "id": "no-early-return-to-ternary",
+      "kind": "assert",
+      "script": "steps/no-early-return-to-ternary.mjs"
+    },
+    {
+      "id": "module-const-screaming-snake",
+      "kind": "assert",
+      "script": "steps/module-const-screaming-snake.mjs"
+    },
+    {
+      "id": "style-drift",
+      "kind": "slot",
+      "question": "新代码的命名和控制流是否和所在文件一致，且没有把已符合规范的写法改差？",
+      "answer": "pass-fail",
+      "onFail": "stop"
+    }
+  ]
+}
