@@ -1,20 +1,47 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { DOMAINS_DIR } from "./paths.js";
-import type { DomainDefinition, DomainStep } from "./domain.js";
+import { domainDir } from "./paths.js";
+import type { DomainStep } from "./domain.js";
 import { readDomain } from "./domain.js";
+
+const READ_CONTENT_LIMIT = 1200;
+
+export type StepResult = {
+  id: string;
+  kind: string;
+  ok: boolean;
+  detail?: string;
+};
+
+export type SlotState = {
+  id: string;
+  state: "pending" | "pass" | "fail";
+  question: string;
+};
 
 export type RunResult = {
   domain: string;
   cwd: string;
   ok: boolean;
   log: string[];
+  steps: StepResult[];
+  slots: SlotState[];
+  failure?: { stepId: string; reason: string };
 };
 
-function runAssert(domainName: string, step: DomainStep, cwd: string): boolean {
-  if (step.kind !== "assert") return true;
-  const scriptPath = path.join(DOMAINS_DIR, domainName, step.script);
+export type RunOptions = {
+  atomValues?: Record<string, boolean>;
+  slots?: Record<string, string>;
+  /** strict: standalone `latch run` fails on an unanswered slot.
+   *  defer: route engine owns the slot decision via its `ask` transition. */
+  slotPolicy?: "strict" | "defer";
+  emitReadContent?: boolean;
+};
+
+function runAssertScript(domainName: string, script: string, cwd: string): boolean {
+  const scriptPath = path.join(domainDir(domainName), script);
+  if (!scriptPath.startsWith(domainDir(domainName) + path.sep)) return false;
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd,
     env: { ...process.env, LATCH_CWD: cwd },
@@ -26,14 +53,37 @@ function runAssert(domainName: string, step: DomainStep, cwd: string): boolean {
   return false;
 }
 
+function runTool(command: string | string[], cwd: string): boolean {
+  const result =
+    typeof command === "string"
+      ? spawnSync(command, { shell: true, cwd, encoding: "utf8" })
+      : spawnSync(command[0], command.slice(1), {
+          shell: false,
+          cwd,
+          encoding: "utf8",
+        });
+  return result.status === 0;
+}
+
 export async function runDomain(
   domainName: string,
   cwd: string,
+  options: RunOptions = {},
 ): Promise<RunResult> {
   const domain = await readDomain(domainName);
+  const slotPolicy = options.slotPolicy ?? "strict";
   const log: string[] = [];
+  const steps: StepResult[] = [];
+  const slots: SlotState[] = [];
+  let failure: RunResult["failure"];
 
-  for (const step of domain.steps) {
+  function fail(stepId: string, reason: string): RunResult {
+    log.push(`[失败] ${stepId}: ${reason}`);
+    failure = { stepId, reason };
+    return { domain: domainName, cwd, ok: false, log, steps, slots, failure };
+  }
+
+  for (const step of domain.steps as DomainStep[]) {
     if (step.kind === "read") {
       log.push(`[read] 必须阅读：${step.paths.join(", ")}`);
       for (const rel of step.paths) {
@@ -41,46 +91,77 @@ export async function runDomain(
         try {
           await fs.access(full);
         } catch {
-          log.push(`[read] 缺失文件：${rel}`);
-          return { domain: domainName, cwd, ok: false, log };
+          steps.push({ id: step.id, kind: step.kind, ok: false, detail: `缺失 ${rel}` });
+          return fail(step.id, `缺失文件 ${rel}`);
+        }
+        if (step.emit && options.emitReadContent !== false) {
+          try {
+            const text = await fs.readFile(full, "utf8");
+            const clipped = text.slice(0, READ_CONTENT_LIMIT);
+            log.push(`[read] ${rel}（前 ${clipped.length} 字符）`);
+            log.push(clipped);
+            if (text.length > READ_CONTENT_LIMIT) log.push("… 已截断");
+          } catch {
+            /* unreadable content is not fatal; existence was already checked */
+          }
         }
       }
+      steps.push({ id: step.id, kind: step.kind, ok: true });
       continue;
     }
 
     if (step.kind === "assert") {
-      log.push(`[assert] ${step.id}`);
-      if (!runAssert(domainName, step, cwd)) {
-        log.push(`[assert] 失败：${step.id}`);
-        return { domain: domainName, cwd, ok: false, log };
+      let ok: boolean;
+      let detail: string;
+      if (step.atom) {
+        const expected = step.expect ?? false;
+        const present = step.atom in (options.atomValues ?? {});
+        const value = options.atomValues?.[step.atom] ?? false;
+        ok = present && value === expected;
+        detail = present
+          ? `${step.atom}=${value}，期望 ${expected}`
+          : `原子 ${step.atom} 未求值`;
+      } else if (step.script) {
+        ok = runAssertScript(domainName, step.script, cwd);
+        detail = `script ${step.script} 退出码 ${ok ? 0 : 1}`;
+      } else {
+        ok = false;
+        detail = "assert 缺少 atom / script";
       }
+      log.push(`[assert] ${step.id} · ${detail}`);
+      steps.push({ id: step.id, kind: step.kind, ok, detail });
+      if (!ok) return fail(step.id, detail);
       continue;
     }
 
     if (step.kind === "slot") {
-      log.push(`[slot] 问题：${step.question}`);
-      log.push(`[slot] 作答：仅允许 pass 或 fail`);
-      log.push(
-        `[slot] 若 fail → ${step.onFail}（停止后续 plan / edit / commit）`,
-      );
+      const raw = options.slots?.[step.id];
+      const state: SlotState["state"] =
+        raw === "pass" ? "pass" : raw === "fail" ? "fail" : "pending";
+      slots.push({ id: step.id, state, question: step.question });
+      log.push(`[slot] ${step.id}: ${state} · ${step.question}`);
+      const ok = state === "pass" || (slotPolicy === "defer" && state !== "fail");
+      steps.push({ id: step.id, kind: step.kind, ok, detail: `slot=${state}` });
+      if (!ok) {
+        if (slotPolicy === "defer") continue;
+        return fail(step.id, `slot ${step.id} 状态为 ${state}`);
+      }
       continue;
     }
 
     if (step.kind === "tool") {
-      log.push(`[tool] ${step.command}`);
-      const result = spawnSync(step.command, {
-        shell: true,
-        cwd,
-        encoding: "utf8",
-      });
-      if (result.status !== 0) {
-        log.push(`[tool] 失败`);
-        return { domain: domainName, cwd, ok: false, log };
-      }
+      const label = Array.isArray(step.command)
+        ? step.command.join(" ")
+        : step.command;
+      const ok = runTool(step.command, cwd);
+      log.push(`[tool] ${label} · ${ok ? "通过" : "失败"}`);
+      steps.push({ id: step.id, kind: step.kind, ok, detail: label });
+      if (!ok) return fail(step.id, `tool ${label} 失败`);
+      continue;
     }
   }
 
-  return { domain: domainName, cwd, ok: true, log };
+  return { domain: domainName, cwd, ok: true, log, steps, slots };
 }
 
 export function formatRunOutput(result: RunResult): string {
@@ -90,7 +171,10 @@ export function formatRunOutput(result: RunResult): string {
     "",
     ...result.log,
     "",
-    result.ok ? "结果：通过（slot 须由 agent 自行确认）" : "结果：未通过",
+    `步骤：${result.steps.filter((s) => s.ok).length}/${result.steps.length} 通过`,
+    ...result.slots.map((s) => `slot ${s.id}: ${s.state}`),
+    result.failure ? `失败点：${result.failure.stepId} · ${result.failure.reason}` : "",
+    result.ok ? "结果：通过" : "结果：未通过",
   ];
-  return lines.join("\n");
+  return lines.filter(Boolean).join("\n");
 }

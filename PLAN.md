@@ -2,6 +2,8 @@
 
 Latch（闩）是一个本地技能库控制台。它只管两件事：技能从哪来，以及哪些步骤不许靠模型临场发挥。
 
+> 2026-11-04：v1 更进依据见 [docs/v1-research-plan.md](docs/v1-research-plan.md)。本文件保留三层定位与静态域原设计；阶段表、全链接路由、状态与入口设计以新文档为准。
+
 ## 名字与标记
 
 - 仓库：`~/Company/latch`
@@ -124,4 +126,4 @@ latch/
 3. 静态域编辑器、`latch run`、生成 always-apply 规则
 4. 把 Openstrat 现有 skill 迁到 `library/`，仓库里只留指向 Latch 的挂载；把改动纪律收成第一个静态域
 
-当前仓库停在本方案、图标和空的 `library/`。控制台代码从阶段 1 开始写。
+仓库已有三屏控制台、runner、挂载、CLI 与 server（`a569508`，`npm run typecheck` 通过）。上面的四阶段表已被 `docs/v1-research-plan.md` 的 S0–S5 取代；路由、全链接与入口设计以该文档为准。

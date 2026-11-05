@@ -1,0 +1,8 @@
+{
+  "added": [
+    "+import { useEffect } from \"react\";",
+    "+const x = useEffect(() => {});"
+  ],
+  "removed": [],
+  "changedPaths": ["app/(tabs)/index.tsx"]
+}

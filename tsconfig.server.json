@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["server/**/*.ts", "shared/**/*.ts", "cli/**/*.ts"]
+  "include": ["server/**/*.ts", "shared/**/*.ts", "cli/**/*.ts", "tests/**/*.ts"]
 }

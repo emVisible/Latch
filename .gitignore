@@ -2,3 +2,5 @@
 node_modules
 dist
 .latch-source
+.workbuddy-ai/
+.latch/

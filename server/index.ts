@@ -3,9 +3,23 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { loadAtomRegistry } from "../shared/atoms.js";
 import { compileAlwaysApplyRule, listDomains, readDomain, writeDomain } from "../shared/domain.js";
-import { mountSkill, scanMounts, unmountSkill } from "../shared/mount.js";
+import { runDoctor } from "../shared/doctor.js";
+import { installHooks, hookStatus } from "../shared/hooks.js";
+import { readJournal } from "../shared/journal.js";
+import { MountConflictError, mountSkill, scanMounts, unmountSkill } from "../shared/mount.js";
+import { assertSafeName, LATCH_ROOT } from "../shared/paths.js";
+import { readLinkmap, listRoutes, readRoute, writeRoute } from "../shared/route.js";
+import {
+  answerSlot,
+  checkRoute,
+  explainRoute,
+  routeSummary,
+  runRoute,
+} from "../shared/routeRunner.js";
 import { runDomain, formatRunOutput } from "../shared/runner.js";
+import { validateDomain, validateRoute, validateSettings } from "../shared/schema.js";
 import { loadSettings, saveSettings } from "../shared/settings.js";
 import {
   listSkills,
@@ -13,7 +27,8 @@ import {
   serializeSkill,
   writeSkill,
 } from "../shared/skill.js";
-import { LATCH_ROOT } from "../shared/paths.js";
+import { collectSnapshot } from "../shared/snapshot.js";
+import { evaluateAtoms } from "../shared/atoms.js";
 
 const app = new Hono();
 
@@ -24,6 +39,22 @@ app.use(
   }),
 );
 
+function safe(name: string): string | null {
+  try {
+    return assertSafeName(name);
+  } catch {
+    return null;
+  }
+}
+
+function message(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function status(e: unknown): 400 | 409 {
+  return e instanceof MountConflictError ? 409 : 400;
+}
+
 app.get("/api/health", (c) => c.json({ ok: true, root: LATCH_ROOT }));
 
 app.get("/api/skills", async (c) => {
@@ -31,18 +62,15 @@ app.get("/api/skills", async (c) => {
   const items = await Promise.all(
     names.map(async (name) => {
       const skill = await readSkill(name);
-      return {
-        name,
-        description: skill.description,
-        issues: skill.issues,
-      };
+      return { name, description: skill.description, issues: skill.issues };
     }),
   );
   return c.json({ skills: items });
 });
 
 app.get("/api/skills/:name", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   try {
     return c.json(await readSkill(name));
   } catch {
@@ -51,17 +79,17 @@ app.get("/api/skills/:name", async (c) => {
 });
 
 app.put("/api/skills/:name", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   const body = await c.req.json<{ raw?: string; frontmatter?: Record<string, unknown>; body?: string }>();
   let raw = body.raw;
-  if (!raw && body.frontmatter) {
-    raw = serializeSkill(body.frontmatter, body.body ?? "");
+  if (!raw && body.frontmatter) raw = serializeSkill(body.frontmatter, body.body ?? "");
+  if (!raw) return c.json({ error: "raw or frontmatter required" }, 400);
+  try {
+    return c.json(await writeSkill(name, raw));
+  } catch (e) {
+    return c.json({ error: message(e) }, status(e));
   }
-  if (!raw) {
-    return c.json({ error: "raw or frontmatter required" }, 400);
-  }
-  const skill = await writeSkill(name, raw);
-  return c.json(skill);
 });
 
 app.get("/api/domains", async (c) => {
@@ -76,7 +104,8 @@ app.get("/api/domains", async (c) => {
 });
 
 app.get("/api/domains/:name", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   try {
     return c.json(await readDomain(name));
   } catch {
@@ -85,102 +114,221 @@ app.get("/api/domains/:name", async (c) => {
 });
 
 app.put("/api/domains/:name", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   const def = await c.req.json();
-  if (def.name !== name) {
-    return c.json({ error: "name mismatch" }, 400);
-  }
+  if (def.name !== name) return c.json({ error: "name mismatch" }, 400);
+  const issues = validateDomain(def);
+  if (issues.length) return c.json({ error: "校验失败", issues }, 400);
   await writeDomain(def);
   return c.json(await readDomain(name));
 });
 
 app.get("/api/domains/:name/rule", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   try {
-    const def = await readDomain(name);
-    return c.text(compileAlwaysApplyRule(def));
+    return c.text(compileAlwaysApplyRule(await readDomain(name)));
   } catch {
     return c.json({ error: "not found" }, 404);
   }
 });
 
 app.post("/api/domains/:name/install-rule", async (c) => {
-  const name = c.req.param("name");
-  const { targetId } = await c.req.json<{ targetId: string }>();
-  const settings = await loadSettings();
-  const target = settings.targets.find((t) => t.id === targetId);
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const { targetId, route } = await c.req.json<{ targetId: string; route?: string }>();
+  const target = (await loadSettings()).targets.find((t) => t.id === targetId);
   if (!target) return c.json({ error: "unknown target" }, 400);
   const def = await readDomain(name);
-  const ruleName = `latch-${name}.mdc`;
-  const dest = path.join(target.path, ".cursor", "rules", ruleName);
+  const dest = path.join(target.path, ".cursor", "rules", `latch-${name}.mdc`);
   await fs.mkdir(path.dirname(dest), { recursive: true });
-  await fs.writeFile(dest, compileAlwaysApplyRule(def), "utf8");
+  await fs.writeFile(dest, compileAlwaysApplyRule(def, route ?? "openstrat"), "utf8");
   return c.json({ path: dest });
 });
 
-app.get("/api/settings/targets", async (c) => {
-  const settings = await loadSettings();
-  return c.json(settings);
-});
+app.get("/api/settings/targets", async (c) => c.json(await loadSettings()));
 
 app.put("/api/settings/targets", async (c) => {
   const body = await c.req.json();
+  const issues = validateSettings(body);
+  if (issues.length) return c.json({ error: "校验失败", issues }, 400);
   await saveSettings(body);
   return c.json(await loadSettings());
 });
 
 app.get("/api/mounts/:skillName", async (c) => {
-  const skillName = c.req.param("skillName");
-  const settings = await loadSettings();
-  const statuses = await scanMounts(skillName, settings.targets);
-  return c.json({ mounts: statuses });
+  const name = safe(c.req.param("skillName"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  return c.json({ mounts: await scanMounts(name, (await loadSettings()).targets) });
 });
 
 app.post("/api/mounts", async (c) => {
-  const { skillName, targetIds } = await c.req.json<{
-    skillName: string;
-    targetIds: string[];
-  }>();
-  const settings = await loadSettings();
-  const results = [];
-  for (const id of targetIds) {
-    const target = settings.targets.find((t) => t.id === id);
-    if (!target) continue;
-    results.push(await mountSkill(skillName, target));
+  const { skillName, targetIds } = await c.req.json<{ skillName: string; targetIds: string[] }>();
+  if (!safe(skillName)) return c.json({ error: "invalid name" }, 400);
+  const targets = (await loadSettings()).targets;
+  try {
+    const mounted = [];
+    for (const id of targetIds) {
+      const target = targets.find((t) => t.id === id);
+      if (target) mounted.push(await mountSkill(skillName, target));
+    }
+    return c.json({ mounted });
+  } catch (e) {
+    return c.json({ error: message(e) }, status(e));
   }
-  return c.json({ mounted: results });
 });
 
 app.delete("/api/mounts", async (c) => {
-  const { skillName, targetIds } = await c.req.json<{
-    skillName: string;
-    targetIds: string[];
-  }>();
-  const settings = await loadSettings();
-  for (const id of targetIds) {
-    const target = settings.targets.find((t) => t.id === id);
-    if (!target) continue;
-    await unmountSkill(skillName, target);
+  const { skillName, targetIds } = await c.req.json<{ skillName: string; targetIds: string[] }>();
+  if (!safe(skillName)) return c.json({ error: "invalid name" }, 400);
+  const targets = (await loadSettings()).targets;
+  try {
+    for (const id of targetIds) {
+      const target = targets.find((t) => t.id === id);
+      if (target) await unmountSkill(skillName, target);
+    }
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: message(e) }, status(e));
   }
-  return c.json({ ok: true });
 });
 
 app.post("/api/run/:name", async (c) => {
-  const name = c.req.param("name");
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
   const { cwd } = await c.req.json<{ cwd?: string }>();
   const workdir = cwd ?? process.cwd();
+  const { atoms } = await loadAtomRegistry();
+  const snapshot = await collectSnapshot(workdir);
+  const evaluation = evaluateAtoms(Object.keys(atoms), snapshot, atoms);
   try {
-    const result = await runDomain(name, workdir);
+    const result = await runDomain(name, workdir, { atomValues: evaluation.values });
     return c.json({ ...result, output: formatRunOutput(result) });
   } catch (e) {
-    return c.json(
-      { error: e instanceof Error ? e.message : "run failed" },
-      500,
-    );
+    return c.json({ error: message(e) }, 500);
   }
 });
 
+app.get("/api/routes", async (c) => {
+  const names = await listRoutes();
+  const items = await Promise.all(
+    names.map(async (name) => {
+      const route = await readRoute(name);
+      const linkmap = await readLinkmap(name);
+      return {
+        name,
+        policy: route.policy,
+        stages: Object.keys(route.stages).length,
+        atoms: route.routingAtoms.length,
+        linkmap: linkmap?.generatedAt ?? null,
+      };
+    }),
+  );
+  return c.json({ routes: items });
+});
+
+app.get("/api/routes/:name", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  try {
+    return c.json(await readRoute(name));
+  } catch {
+    return c.json({ error: "not found" }, 404);
+  }
+});
+
+app.put("/api/routes/:name", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const def = await c.req.json();
+  if (def.name !== name) return c.json({ error: "name mismatch" }, 400);
+  const issues = validateRoute(def);
+  if (issues.length) return c.json({ error: "校验失败", issues }, 400);
+  await writeRoute(def);
+  return c.json(await readRoute(name));
+});
+
+app.get("/api/routes/:name/linkmap", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  return c.json({ linkmap: await readLinkmap(name) });
+});
+
+app.post("/api/routes/:name/check", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const { report, linkmapWritten } = await checkRoute(name, { write: true });
+  return c.json({ ...report, linkmapWritten });
+});
+
+app.post("/api/routes/:name/run", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const { cwd, window } = await c.req.json<{ cwd?: string; window?: string }>();
+  const result = await runRoute(name, path.resolve(cwd ?? process.cwd()), { window });
+  return c.json(result);
+});
+
+app.post("/api/routes/:name/explain", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const { cwd, window } = await c.req.json<{ cwd?: string; window?: string }>();
+  return c.text(
+    await explainRoute(name, path.resolve(cwd ?? process.cwd()), window ?? "worktree"),
+  );
+});
+
+app.get("/api/routes/:name/journal", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  const cwd = c.req.query("cwd") ?? process.cwd();
+  return c.json({ journal: await readJournal(path.resolve(cwd)) });
+});
+
+app.get("/api/routes/:name/summary", async (c) => {
+  const name = safe(c.req.param("name"));
+  if (!name) return c.json({ error: "invalid name" }, 400);
+  return c.text(await routeSummary(name));
+});
+
+app.post("/api/slot", async (c) => {
+  const { route, slot, answer, cwd, window } = await c.req.json<{
+    route: string;
+    slot: string;
+    answer: "pass" | "fail";
+    cwd?: string;
+    window?: string;
+  }>();
+  if (!safe(route) || !/^[\w-]+$/.test(slot ?? "") || !["pass", "fail"].includes(answer)) {
+    return c.json({ error: "invalid slot request" }, 400);
+  }
+  return c.json(
+    await answerSlot(route, slot, answer, path.resolve(cwd ?? process.cwd()), window ?? "worktree"),
+  );
+});
+
+app.get("/api/doctor", async (c) => c.text(await runDoctor()));
+
+app.get("/api/hooks/status", async (c) => {
+  const targetId = c.req.query("targetId") ?? "";
+  const target = (await loadSettings()).targets.find((t) => t.id === targetId);
+  if (!target) return c.json({ error: "unknown target" }, 400);
+  return c.json({ status: await hookStatus(target.path) });
+});
+
+app.post("/api/hooks/install", async (c) => {
+  const { targetId, route, window } = await c.req.json<{
+    targetId: string;
+    route?: string;
+    window?: string;
+  }>();
+  const target = (await loadSettings()).targets.find((t) => t.id === targetId);
+  if (!target) return c.json({ error: "unknown target" }, 400);
+  return c.json(await installHooks(target.path, route ?? "openstrat", { window }));
+});
+
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port }, () => {
+serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => {
   console.log(`Latch API http://127.0.0.1:${port}`);
 });

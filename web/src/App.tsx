@@ -2,6 +2,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import { DeployPage } from "./pages/DeployPage";
 import { EditPage } from "./pages/EditPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { RoutePage } from "./pages/RoutePage";
 
 export default function App() {
   return (
@@ -20,6 +21,9 @@ export default function App() {
             <Link to="/" className="hover:text-zinc-100">
               库
             </Link>
+            <Link to="/routes" className="hover:text-zinc-100">
+              链路
+            </Link>
             <Link to="/edit" className="hover:text-zinc-100">
               编辑
             </Link>
@@ -32,6 +36,7 @@ export default function App() {
       <main className="mx-auto max-w-3xl px-5 py-8">
         <Routes>
           <Route path="/" element={<LibraryPage />} />
+          <Route path="/routes" element={<RoutePage />} />
           <Route path="/edit" element={<EditPage />} />
           <Route path="/deploy" element={<DeployPage />} />
         </Routes>

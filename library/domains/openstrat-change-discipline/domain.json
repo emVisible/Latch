@@ -9,27 +9,32 @@
     {
       "id": "read-agents",
       "kind": "read",
-      "paths": ["AGENTS.md"]
+      "paths": ["AGENTS.md"],
+      "emit": true
     },
     {
       "id": "no-new-useeffect",
       "kind": "assert",
-      "script": "steps/no-new-useeffect.mjs"
+      "atom": "diff.useEffect",
+      "expect": false
     },
     {
       "id": "no-tab-keepalive",
       "kind": "assert",
-      "script": "steps/no-tab-keepalive.mjs"
+      "atom": "diff.tabKeepalive",
+      "expect": false
     },
     {
       "id": "no-early-return-to-ternary",
       "kind": "assert",
-      "script": "steps/no-early-return-to-ternary.mjs"
+      "atom": "diff.earlyReturnToTernary",
+      "expect": false
     },
     {
       "id": "module-const-screaming-snake",
       "kind": "assert",
-      "script": "steps/module-const-screaming-snake.mjs"
+      "atom": "diff.moduleConstCamel",
+      "expect": false
     },
     {
       "id": "style-drift",

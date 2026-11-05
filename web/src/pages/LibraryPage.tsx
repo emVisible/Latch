@@ -4,6 +4,8 @@ import { api, type DomainSummary, type MountStatus, type SkillSummary } from "..
 
 function mountLabel(m: MountStatus): string {
   if (!m.exists) return "未挂载";
+  if (!m.owned) return "非 Latch 管理 · 拒绝操作";
+  if (!m.discovered) return `${m.mode} · 发现检查失败`;
   if (m.valid) return `${m.mode} · 与库一致`;
   return `${m.mode} · 需重新部署`;
 }

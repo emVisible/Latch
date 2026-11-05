@@ -1,33 +1,49 @@
 import { useEffect, useState } from "react";
-import { api, type MountStatus, type MountTarget, type SkillSummary } from "../api";
+import {
+  api,
+  type MountStatus,
+  type MountTarget,
+  type RouteSummary,
+  type SkillSummary,
+} from "../api";
 
 export function DeployPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [targets, setTargets] = useState<MountTarget[]>([]);
+  const [routes, setRoutes] = useState<RouteSummary[]>([]);
   const [skillName, setSkillName] = useState("");
   const [mounts, setMounts] = useState<MountStatus[]>([]);
   const [selectedTargets, setSelectedTargets] = useState<Record<string, boolean>>(
     {},
   );
-  const [domainName, setDomainName] = useState("openstrat-change-discipline");
+  const [domainName, setDomainName] = useState("");
   const [ruleTarget, setRuleTarget] = useState("");
+  const [hookTarget, setHookTarget] = useState("");
+  const [hookRoute, setHookRoute] = useState("openstrat");
+  const [hookLines, setHookLines] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.listSkills(), api.getTargets(), api.listDomains()]).then(
-      ([s, t, domains]) => {
-        setSkills(s);
-        setTargets(t);
-        if (s[0]) setSkillName(s[0].name);
-        if (t[0]) {
-          setRuleTarget(t[0].id);
-          const init: Record<string, boolean> = {};
-          for (const x of t) init[x.id] = true;
-          setSelectedTargets(init);
-        }
-        if (domains[0]) setDomainName(domains[0].name);
-      },
-    );
+    Promise.all([
+      api.listSkills(),
+      api.getTargets(),
+      api.listDomains(),
+      api.listRoutes(),
+    ]).then(([s, t, domains, routes]) => {
+      setSkills(s);
+      setTargets(t);
+      setRoutes(routes);
+      if (s[0]) setSkillName(s[0].name);
+      if (t[0]) {
+        setRuleTarget(t[0].id);
+        setHookTarget(t[0].id);
+        const init: Record<string, boolean> = {};
+        for (const x of t) init[x.id] = true;
+        setSelectedTargets(init);
+      }
+      if (domains[0]) setDomainName(domains[0].name);
+      if (routes[0]) setHookRoute(routes[0].name);
+    });
   }, []);
 
   useEffect(() => {
@@ -52,6 +68,19 @@ export function DeployPage() {
   async function installRule() {
     const res = await api.installRule(domainName, ruleTarget);
     setMessage(`规则已写入 ${res.path}`);
+  }
+
+  async function checkHooks() {
+    setHookLines(await api.hookStatus(hookTarget));
+  }
+
+  async function doInstallHooks() {
+    const res = await api.installHooks(hookTarget, hookRoute);
+    setHookLines([
+      ...res.written.map((p) => `已写入 ${p}`),
+      ...res.warnings.map((w) => `注意 ${w}`),
+    ]);
+    setMessage("hook 已写入；激活前请先完成验收");
   }
 
   return (
@@ -131,7 +160,7 @@ export function DeployPage() {
       <section className="space-y-4">
         <h2 className="text-lg font-medium">静态域规则</h2>
         <p className="text-sm text-zinc-500">
-          在目标仓库写入 always-apply 的 .mdc，提示先运行 latch run
+          在目标仓库写入 always-apply 的 .mdc，仅作说明层；执行层是 hook
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <input
@@ -158,6 +187,51 @@ export function DeployPage() {
             写入规则
           </button>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium">入口 hook</h2>
+        <p className="text-sm text-zinc-500">
+          生成 Cursor / Claude Code / git pre-commit 的 fail-closed 门禁。
+          hook 会阻断操作，请先跑 doctor 与验收再激活
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <select
+            value={hookTarget}
+            onChange={(e) => setHookTarget(e.target.value)}
+            className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+          >
+            {targets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={hookRoute}
+            onChange={(e) => setHookRoute(e.target.value)}
+            className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2"
+          >
+            {routes.map((r) => (
+              <option key={r.name} value={r.name}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={checkHooks} className="text-zinc-400 hover:text-zinc-200">
+            查看状态
+          </button>
+          <button type="button" onClick={doInstallHooks} className="text-blue-400 hover:text-blue-300">
+            安装 hook
+          </button>
+        </div>
+        {hookLines.length > 0 ? (
+          <ul className="space-y-1 font-mono text-xs text-zinc-500">
+            {hookLines.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       {message ? <p className="text-sm text-zinc-500">{message}</p> : null}

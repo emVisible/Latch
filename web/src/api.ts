@@ -10,6 +10,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return parseJson<T>(await fetch(url, init));
 }
 
+async function requestText(url: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(res.statusText);
+  return res.text();
+}
+
+function jsonBody(value: unknown): RequestInit {
+  return {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value),
+  };
+}
+
 export type SkillSummary = {
   name: string;
   description: string;
@@ -38,6 +51,56 @@ export type MountStatus = {
   mode: "symlink" | "copy";
   exists: boolean;
   valid: boolean;
+  owned: boolean;
+  discovered: boolean;
+};
+
+export type RouteSummary = {
+  name: string;
+  policy: string;
+  stages: number;
+  atoms: number;
+  linkmap: string | null;
+};
+
+export type CompileIssue = {
+  code: string;
+  severity: "error" | "warning";
+  stage?: string;
+  message: string;
+};
+
+export type CompileReport = {
+  ok: boolean;
+  route: string;
+  issues: CompileIssue[];
+  stages: Record<
+    string,
+    {
+      scope: string[];
+      feasible: number;
+      links: { id: string; satisfying: number; minimalAssignment: Record<string, boolean> | null }[];
+    }
+  >;
+  linkmap: { generatedAt: string; routeHash: string; atomsHash: string };
+  linkmapWritten?: boolean;
+};
+
+export type RouteRunResult = {
+  route: string;
+  exitCode: number;
+  status: string;
+  ok: boolean;
+  log: string[];
+  linkId?: string;
+  stage?: string;
+  pendingSlot?: string;
+  snapshotHash: string;
+  journal: {
+    status: string;
+    slotAnswers: Record<string, string>;
+    entries: { seq: number; stage: string; linkId: string }[];
+  };
 };
 
 export const api = {
@@ -47,8 +110,7 @@ export const api = {
   saveSkill: (name: string, raw: string) =>
     request<SkillRecord>(`/api/skills/${name}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ raw }),
+      ...jsonBody({ raw }),
     }),
   listDomains: () =>
     request<{ domains: DomainSummary[] }>("/api/domains").then((r) => r.domains),
@@ -56,8 +118,7 @@ export const api = {
   saveDomain: (name: string, def: unknown) =>
     request(`/api/domains/${name}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(def),
+      ...jsonBody(def),
     }),
   getTargets: () =>
     request<{ targets: MountTarget[] }>("/api/settings/targets").then(
@@ -70,19 +131,63 @@ export const api = {
   mount: (skillName: string, targetIds: string[]) =>
     request("/api/mounts", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ skillName, targetIds }),
+      ...jsonBody({ skillName, targetIds }),
     }),
   unmount: (skillName: string, targetIds: string[]) =>
     request("/api/mounts", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ skillName, targetIds }),
+      ...jsonBody({ skillName, targetIds }),
     }),
   installRule: (domainName: string, targetId: string) =>
     request<{ path: string }>(`/api/domains/${domainName}/install-rule`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetId }),
+      ...jsonBody({ targetId }),
+    }),
+
+  listRoutes: () =>
+    request<{ routes: RouteSummary[] }>("/api/routes").then((r) => r.routes),
+  getRoute: (name: string) => request<unknown>(`/api/routes/${name}`),
+  checkRoute: (name: string) =>
+    request<CompileReport>(`/api/routes/${name}/check`, { method: "POST" }),
+  runRoute: (name: string, cwd: string, window: string) =>
+    request<RouteRunResult>(`/api/routes/${name}/run`, {
+      method: "POST",
+      ...jsonBody({ cwd, window }),
+    }),
+  explainRoute: (name: string, cwd: string, window: string) =>
+    requestText(`/api/routes/${name}/explain`, {
+      method: "POST",
+      ...jsonBody({ cwd, window }),
+    }),
+  getJournal: (name: string, cwd: string) =>
+    request<{ journal: unknown }>(
+      `/api/routes/${name}/journal?cwd=${encodeURIComponent(cwd)}`,
+    ).then((r) => r.journal),
+  getLinkmap: (name: string) =>
+    request<{ linkmap: unknown }>(`/api/routes/${name}/linkmap`).then(
+      (r) => r.linkmap,
+    ),
+  getSummary: (name: string) =>
+    requestText(`/api/routes/${name}/summary`),
+  answerSlot: (
+    route: string,
+    slot: string,
+    answer: "pass" | "fail",
+    cwd: string,
+    window: string,
+  ) =>
+    request<{ ok: boolean; message: string }>("/api/slot", {
+      method: "POST",
+      ...jsonBody({ route, slot, answer, cwd, window }),
+    }),
+  doctor: () => requestText("/api/doctor"),
+  hookStatus: (targetId: string) =>
+    request<{ status: string[] }>(
+      `/api/hooks/status?targetId=${encodeURIComponent(targetId)}`,
+    ).then((r) => r.status),
+  installHooks: (targetId: string, route: string) =>
+    request<{ written: string[]; warnings: string[] }>("/api/hooks/install", {
+      method: "POST",
+      ...jsonBody({ targetId, route }),
     }),
 };
