@@ -1,9 +1,9 @@
 {
   "version": 1,
   "route": "openstrat",
-  "generatedAt": "2026-11-05T05:44:05.663Z",
+  "generatedAt": "2026-11-23T07:53:54.548Z",
   "routeHash": "8c6864469a0e6610",
-  "atomsHash": "250dea17a3fd8c8e",
+  "atomsHash": "d029047e307a521d",
   "policy": "unique",
   "stages": {
     "entry": {

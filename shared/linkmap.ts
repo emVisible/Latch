@@ -40,7 +40,7 @@ export function hashRoute(route: RouteDefinition): string {
 }
 
 function parseConstraint(c: string): [string, string] | null {
-  const m = c.match(/^\s*([\w.]+)\s*=>\s*([\w.]+)\s*$/);
+  const m = c.match(/^\s*([\w.]+)\s*=>\s*(!?[\w.]+)\s*$/);
   return m ? [m[1], m[2]] : null;
 }
 
@@ -49,8 +49,12 @@ function feasible(
   constraints: [string, string][],
 ): boolean {
   for (const [a, b] of constraints) {
-    if (!(a in values) || !(b in values)) continue;
-    if (values[a] && !values[b]) return false;
+    const neg = b.startsWith("!");
+    const target = neg ? b.slice(1) : b;
+    if (!(a in values) || !(target in values)) continue;
+    if (neg) {
+      if (values[a] && values[target]) return false;
+    } else if (values[a] && !values[target]) return false;
   }
   return true;
 }

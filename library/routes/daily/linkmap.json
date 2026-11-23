@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "route": "daily",
+  "generatedAt": "2026-11-23T08:27:30.245Z",
+  "routeHash": "ed767eda6263b3ac",
+  "atomsHash": "d029047e307a521d",
+  "policy": "unique",
+  "stages": {
+    "entry": {
+      "scope": [
+        "task.present",
+        "claim.unsourced",
+        "claim.unresolved",
+        "write.undeclared"
+      ],
+      "feasible": 9,
+      "links": [
+        {
+          "id": "absent",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": false,
+            "claim.unsourced": false,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        },
+        {
+          "id": "breach",
+          "satisfying": 7,
+          "minimalAssignment": {
+            "task.present": true,
+            "claim.unsourced": true,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        },
+        {
+          "id": "clean",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": true,
+            "claim.unsourced": false,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        }
+      ]
+    },
+    "map": {
+      "scope": [
+        "run.contract.ok",
+        "map.hit",
+        "map.miss",
+        "map.ambiguous"
+      ],
+      "feasible": 8,
+      "links": [
+        {
+          "id": "contract-failed",
+          "satisfying": 4,
+          "minimalAssignment": {
+            "run.contract.ok": false,
+            "map.hit": false,
+            "map.miss": false,
+            "map.ambiguous": false
+          }
+        },
+        {
+          "id": "miss",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "map.hit": false,
+            "map.miss": true,
+            "map.ambiguous": false
+          }
+        },
+        {
+          "id": "ambiguous",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "map.hit": false,
+            "map.miss": false,
+            "map.ambiguous": true
+          }
+        },
+        {
+          "id": "unset",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "map.hit": false,
+            "map.miss": false,
+            "map.ambiguous": false
+          }
+        },
+        {
+          "id": "hit",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "map.hit": true,
+            "map.miss": false,
+            "map.ambiguous": false
+          }
+        }
+      ]
+    },
+    "after-follow": {
+      "scope": [
+        "run.follow.ok"
+      ],
+      "feasible": 2,
+      "links": [
+        {
+          "id": "follow-failed",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.follow.ok": false
+          }
+        },
+        {
+          "id": "done",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.follow.ok": true
+          }
+        }
+      ]
+    }
+  },
+  "issueCount": 0
+}

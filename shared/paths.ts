@@ -27,6 +27,8 @@ export const SKILLS_DIR = path.join(LIBRARY_DIR, "skills");
 export const DOMAINS_DIR = path.join(LIBRARY_DIR, "domains");
 export const ROUTES_DIR = path.join(LIBRARY_DIR, "routes");
 export const ATOMS_DIR = path.join(LIBRARY_DIR, "atoms");
+export const MAPS_DIR = path.join(LIBRARY_DIR, "maps");
+export const CARDS_DIR = path.join(LIBRARY_DIR, "cards");
 export const SETTINGS_PATH = path.join(LATCH_ROOT, "settings.json");
 
 /** Reject anything that could escape library/ via an API or CLI parameter. */
@@ -74,4 +76,20 @@ export function skillDir(name: string): string {
 
 export function routeFixturesDir(name: string): string {
   return path.join(routeDir(name), "fixtures");
+}
+
+export function mapDir(name: string): string {
+  return resolveWithin(MAPS_DIR, assertSafeName(name));
+}
+
+export function mapFile(name: string): string {
+  return path.join(mapDir(name), "map.json");
+}
+
+export function cardDir(name: string, root: string = CARDS_DIR): string {
+  return resolveWithin(root, assertSafeName(name));
+}
+
+export function repoLatch(repo: string, file: string): string {
+  return path.join(repo, ".latch", file);
 }

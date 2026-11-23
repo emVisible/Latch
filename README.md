@@ -2,7 +2,7 @@
 
 技能库中控。技能从这里挂载到 agent，静态域在这里编译成确定流程；**全链接路由**决定何时进哪个静态域、域之间怎么连、状态怎么变。
 
-方案与调研见 [PLAN.md](PLAN.md)、[docs/v1-research-plan.md](docs/v1-research-plan.md)。图标在 `assets/icon.jpg`。
+方案与调研见 [PLAN.md](PLAN.md)、[docs/v1-research-plan.md](docs/v1-research-plan.md)、[docs/v2-loop.md](docs/v2-loop.md)。下一版方向见 [docs/v3-direction.md](docs/v3-direction.md)。图标在 `assets/icon.jpg`。
 
 ## 开发
 
@@ -27,6 +27,9 @@ npm run latch -- atoms --cwd ~/Company/openstrat_rn --window worktree
 
 # 只打印编译结果，不执行、不写回执
 npm run latch -- route openstrat --cwd ~/Company/openstrat_rn --print
+
+# 日常入口：任务契约 → 功能地图 → 条目步骤
+npm run latch -- route daily --cwd ~/Company/openstrat_rn --window worktree
 
 # 真正跑链路（默认 runner 自己按序执行，模型不选域）
 npm run latch -- route openstrat --cwd ~/Company/openstrat_rn --window worktree
@@ -75,4 +78,4 @@ web/src/pages/RoutePage.tsx     # 链路只读页
 - 静态域 `openstrat-change-discipline`：4 条原子 assert + 1 个 slot，`read` 会带字数上限输出正文
 - 路由 `openstrat`：2 阶段、5 个自由原子、3 个结果原子，`entry` 32 种 / `after-discipline` 6 种可行赋值，0 遗漏 0 重叠
 - 四屏控制台：库 / 链路 / 编辑 / 部署；链路页只读展示编译结果、运行日志与回执
-- 38 项测试覆盖快照（含未跟踪文件）、七项体检、slot 生命周期与哈希作废、hook fail-closed、挂载归属保护
+- 38 项 v1 测试覆盖快照（含未跟踪文件）、七项体检、slot 生命周期与哈希作废、hook fail-closed、挂载归属保护。v2 另有日常回路、六份核心 skill 与晋升门禁的测试，以 `npm test` 为准

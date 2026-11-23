@@ -1,9 +1,11 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { domainDir } from "./paths.js";
 import type { DomainStep } from "./domain.js";
 import { readDomain } from "./domain.js";
+import { rememberRead, type ReadReceipt } from "./journal.js";
 
 const READ_CONTENT_LIMIT = 1200;
 
@@ -27,6 +29,7 @@ export type RunResult = {
   log: string[];
   steps: StepResult[];
   slots: SlotState[];
+  reads: ReadReceipt[];
   failure?: { stepId: string; reason: string };
 };
 
@@ -71,19 +74,29 @@ export async function runDomain(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const domain = await readDomain(domainName);
+  return runStepList(domainName, domain.steps, cwd, options);
+}
+
+export async function runStepList(
+  domainName: string,
+  stepList: DomainStep[],
+  cwd: string,
+  options: RunOptions = {},
+): Promise<RunResult> {
   const slotPolicy = options.slotPolicy ?? "strict";
   const log: string[] = [];
   const steps: StepResult[] = [];
   const slots: SlotState[] = [];
+  const reads: ReadReceipt[] = [];
   let failure: RunResult["failure"];
 
   function fail(stepId: string, reason: string): RunResult {
     log.push(`[失败] ${stepId}: ${reason}`);
     failure = { stepId, reason };
-    return { domain: domainName, cwd, ok: false, log, steps, slots, failure };
+    return { domain: domainName, cwd, ok: false, log, steps, slots, reads, failure };
   }
 
-  for (const step of domain.steps as DomainStep[]) {
+  for (const step of stepList) {
     if (step.kind === "read") {
       log.push(`[read] 必须阅读：${step.paths.join(", ")}`);
       for (const rel of step.paths) {
@@ -94,16 +107,20 @@ export async function runDomain(
           steps.push({ id: step.id, kind: step.kind, ok: false, detail: `缺失 ${rel}` });
           return fail(step.id, `缺失文件 ${rel}`);
         }
-        if (step.emit && options.emitReadContent !== false) {
-          try {
-            const text = await fs.readFile(full, "utf8");
+        try {
+          const buf = await fs.readFile(full);
+          const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+          reads.push({ path: rel, sha256 });
+          await rememberRead(cwd, rel, sha256);
+          if (step.emit && options.emitReadContent !== false) {
+            const text = buf.toString("utf8");
             const clipped = text.slice(0, READ_CONTENT_LIMIT);
             log.push(`[read] ${rel}（前 ${clipped.length} 字符）`);
             log.push(clipped);
             if (text.length > READ_CONTENT_LIMIT) log.push("… 已截断");
-          } catch {
-            /* unreadable content is not fatal; existence was already checked */
           }
+        } catch (e) {
+          return fail(step.id, `读取 ${rel} 失败：${e instanceof Error ? e.message : String(e)}`);
         }
       }
       steps.push({ id: step.id, kind: step.kind, ok: true });
@@ -161,7 +178,7 @@ export async function runDomain(
     }
   }
 
-  return { domain: domainName, cwd, ok: true, log, steps, slots };
+  return { domain: domainName, cwd, ok: true, log, steps, slots, reads };
 }
 
 export function formatRunOutput(result: RunResult): string {

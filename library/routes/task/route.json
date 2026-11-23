@@ -1,0 +1,55 @@
+{
+  "name": "task",
+  "version": 1,
+  "policy": "unique",
+  "maxRounds": 2,
+  "routingAtoms": [
+    "task.present",
+    "claim.unsourced",
+    "claim.unresolved",
+    "write.undeclared"
+  ],
+  "resultAtoms": {},
+  "constraints": [
+    "claim.unsourced => task.present",
+    "claim.unresolved => task.present",
+    "write.undeclared => task.present"
+  ],
+  "molecules": {},
+  "stages": {
+    "entry": {
+      "scope": [
+        "task.present",
+        "claim.unsourced",
+        "claim.unresolved",
+        "write.undeclared"
+      ],
+      "links": [
+        {
+          "id": "absent",
+          "when": { "not": "task.present" },
+          "to": { "kind": "stop", "exit": 1, "reason": "没有任务单" }
+        },
+        {
+          "id": "breach",
+          "when": {
+            "any": ["claim.unsourced", "claim.unresolved", "write.undeclared"]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "任务契约未通过" }
+        },
+        {
+          "id": "clean",
+          "when": {
+            "all": [
+              "task.present",
+              { "not": "claim.unsourced" },
+              { "not": "claim.unresolved" },
+              { "not": "write.undeclared" }
+            ]
+          },
+          "to": { "kind": "stop", "exit": 0, "reason": "任务契约通过" }
+        }
+      ]
+    }
+  }
+}

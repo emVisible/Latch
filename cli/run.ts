@@ -2,6 +2,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { evaluateAtoms, loadAtomRegistry } from "../shared/atoms.js";
+import { examCard, promoteCard } from "../shared/card.js";
+import { readMap, resolveMap, writeResolution } from "../shared/map.js";
+import { validateMap, validateTask, type TaskDocument } from "../shared/schema.js";
+import { writeTaskFile } from "../shared/snapshot.js";
 import { compileAlwaysApplyRule, readDomain } from "../shared/domain.js";
 import { runDoctor } from "../shared/doctor.js";
 import { installHooks } from "../shared/hooks.js";
@@ -29,9 +33,15 @@ function usage() {
   latch run <domain> [--cwd <repo>]        单域调试（slot 未答即失败）
   latch rule <domain> [--write --target <id>] [--route <name>]
   latch atoms [--cwd] [--window]          打印当前快照的原子真值
+  latch task open --cwd <repo> --intent <text> --durability once|lasting
+                   [--writable <path>] [--fact <text> --source <path> --sha256 <hex>]
+  latch task check --cwd <repo> [--window <w>]
+  latch map <app> --query <text> --cwd <repo>
+  latch exam <card> --cwd <repo>
+  latch card promote <card> --cwd <repo>
 
 窗口 window：
-  worktree（默认）| staged | last-commit | range:<ref> | fixture:<file>
+  worktree（默认）| staged | last-commit | range:<ref> | fixture:<file> | evidence:<dir>
 
 退出码：0 通过 / 1 被闩住 / 2 编译失败 / 3 快照或原子不可用 / 4 超出 maxRounds / 5 等待 slot
 `);
@@ -194,7 +204,7 @@ async function cmdHooks(args: Args): Promise<number> {
     console.error(`未知 target: ${targetId}`);
     return 2;
   }
-  const routeName = str(args.flags, "route", "openstrat");
+  const routeName = str(args.flags, "route", "daily");
   const { written, warnings } = await installHooks(target.path, routeName, {
     window: str(args.flags, "window", "worktree"),
   });
@@ -229,6 +239,97 @@ async function cmdAtoms(args: Args): Promise<number> {
   return 0;
 }
 
+async function cmdTask(args: Args): Promise<number> {
+  const action = args.positional[0];
+  const cwd = path.resolve(str(args.flags, "cwd", process.cwd()));
+  if (action === "check") {
+    const result = await runRoute("task", cwd, {
+      window: str(args.flags, "window", "worktree"),
+      print: flag(args.flags, "print"),
+    });
+    output(result.log.join("\n"));
+    output(`退出码 ${result.exitCode} · ${result.status}`);
+    return result.exitCode;
+  }
+  if (action !== "open") {
+    console.error("用法：latch task open|check --cwd <repo>");
+    return 2;
+  }
+  const intent = str(args.flags, "intent");
+  const durability = str(args.flags, "durability");
+  if (!intent || (durability !== "once" && durability !== "lasting")) {
+    console.error("task open 需要 --intent 与 --durability once|lasting");
+    return 2;
+  }
+  const writable = str(args.flags, "writable");
+  const fact = str(args.flags, "fact");
+  const source = str(args.flags, "source");
+  const sha256 = str(args.flags, "sha256");
+  const task: TaskDocument = {
+    intent,
+    durability,
+    writable: writable ? writable.split(",").map((item) => item.trim()).filter(Boolean) : [],
+    returns: fact
+      ? [{ fact, ...(source ? { path: source } : {}), ...(sha256 ? { sha256 } : {}) }]
+      : [],
+  };
+  const issues = validateTask(task);
+  if (issues.length) {
+    console.error(issues.join("\n"));
+    return 2;
+  }
+  await writeTaskFile(cwd, task);
+  output(`已写入 ${path.join(cwd, ".latch/task.json")}`);
+  return 0;
+}
+
+async function cmdMap(args: Args): Promise<number> {
+  const app = args.positional[0];
+  const query = str(args.flags, "query");
+  if (!app || !query) {
+    console.error("用法：latch map <app> --query <text> --cwd <repo>");
+    return 2;
+  }
+  const cwd = path.resolve(str(args.flags, "cwd", process.cwd()));
+  const map = await readMap(app);
+  const issues = validateMap(map);
+  if (issues.length) {
+    console.error(issues.join("\n"));
+    return 2;
+  }
+  const resolved = resolveMap(map, query);
+  await writeResolution(cwd, {
+    app,
+    query,
+    state: resolved.state,
+    entryId: resolved.state === "hit" ? resolved.entryIds[0] : null,
+    entryIds: resolved.entryIds,
+  });
+  output(`${resolved.state} ${resolved.entryIds.join(", ") || "(none)"}`);
+  return resolved.state === "hit" ? 0 : 1;
+}
+
+async function cmdExam(args: Args): Promise<number> {
+  const name = args.positional[0];
+  if (!name) return 2;
+  const res = await examCard(name, path.resolve(str(args.flags, "cwd", process.cwd())));
+  output(res.message);
+  return res.exitCode;
+}
+
+async function cmdCard(args: Args): Promise<number> {
+  if (args.positional[0] !== "promote" || !args.positional[1]) {
+    console.error("用法：latch card promote <card> --cwd <repo>");
+    return 2;
+  }
+  const res = await promoteCard(
+    args.positional[1],
+    path.resolve(str(args.flags, "cwd", process.cwd())),
+  );
+  output(res.message);
+  return res.exitCode;
+}
+
 async function main(): Promise<number> {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
@@ -252,6 +353,14 @@ async function main(): Promise<number> {
       return 0;
     case "atoms":
       return cmdAtoms(args);
+    case "task":
+      return cmdTask(args);
+    case "map":
+      return cmdMap(args);
+    case "exam":
+      return cmdExam(args);
+    case "card":
+      return cmdCard(args);
     case "summary": {
       const name = args.positional[0];
       if (!name) return 2;

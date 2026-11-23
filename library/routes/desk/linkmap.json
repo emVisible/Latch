@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "route": "desk",
+  "generatedAt": "2026-11-23T07:53:55.323Z",
+  "routeHash": "348830de0915c0a1",
+  "atomsHash": "d029047e307a521d",
+  "policy": "unique",
+  "stages": {
+    "entry": {
+      "scope": [
+        "map.hit",
+        "map.miss",
+        "map.ambiguous"
+      ],
+      "feasible": 4,
+      "links": [
+        {
+          "id": "miss",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "map.hit": false,
+            "map.miss": true,
+            "map.ambiguous": false
+          }
+        },
+        {
+          "id": "ambiguous",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "map.hit": false,
+            "map.miss": false,
+            "map.ambiguous": true
+          }
+        },
+        {
+          "id": "unset",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "map.hit": false,
+            "map.miss": false,
+            "map.ambiguous": false
+          }
+        },
+        {
+          "id": "hit",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "map.hit": true,
+            "map.miss": false,
+            "map.ambiguous": false
+          }
+        }
+      ]
+    },
+    "after-follow": {
+      "scope": [
+        "run.follow.ok"
+      ],
+      "feasible": 2,
+      "links": [
+        {
+          "id": "follow-failed",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.follow.ok": false
+          }
+        },
+        {
+          "id": "done",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.follow.ok": true
+          }
+        }
+      ]
+    }
+  },
+  "issueCount": 0
+}

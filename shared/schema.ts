@@ -162,8 +162,8 @@ export function validateRoute(def: unknown): string[] {
     issues.push("route.constraints: 必须是数组");
   } else {
     def.constraints.forEach((c, i) => {
-      if (typeof c !== "string" || !/^\s*[\w.]+\s*=>\s*[\w.]+\s*$/.test(c)) {
-        issues.push(`constraints[${i}]: 只支持形如 A => B 的蕴含式`);
+      if (typeof c !== "string" || !/^\s*[\w.]+\s*=>\s*!?[\w.]+\s*$/.test(c)) {
+        issues.push(`constraints[${i}]: 只支持形如 A => B 或 A => !B 的蕴含式`);
       }
     });
   }
@@ -242,6 +242,204 @@ export function validateSettings(value: unknown): string[] {
     if (typeof t.path === "string" && !t.path.startsWith("/")) {
       issues.push(`targets[${i}].path: 必须是绝对路径`);
     }
+  });
+  return issues;
+}
+
+const SHA256_RE = /^[a-f0-9]{64}$/;
+
+export type TaskReturn = { fact: string; path?: string; sha256?: string };
+
+export type TaskDocument = {
+  intent: string;
+  returns: TaskReturn[];
+  writable: string[];
+  durability: "once" | "lasting";
+};
+
+export function validateTask(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["task: 必须是对象"];
+  if (typeof value.intent !== "string" || !value.intent.trim()) {
+    issues.push("task.intent: 必填");
+  }
+  if (!["once", "lasting"].includes(String(value.durability))) {
+    issues.push("task.durability: 只能是 once 或 lasting");
+  }
+  if (!isStringArray(value.writable)) {
+    issues.push("task.writable: 需要字符串数组");
+  }
+  if (!Array.isArray(value.returns)) {
+    issues.push("task.returns: 需要数组");
+    return issues;
+  }
+  value.returns.forEach((item, i) => {
+    const p = `task.returns[${i}]`;
+    if (!isRecord(item)) {
+      issues.push(`${p}: 必须是对象`);
+      return;
+    }
+    if (typeof item.fact !== "string" || !item.fact.trim()) {
+      issues.push(`${p}.fact: 必填`);
+    }
+    if ("path" in item && typeof item.path !== "string") {
+      issues.push(`${p}.path: 必须是字符串`);
+    }
+    if ("sha256" in item && (typeof item.sha256 !== "string" || !SHA256_RE.test(item.sha256))) {
+      issues.push(`${p}.sha256: 必须是 64 位十六进制`);
+    }
+  });
+  return issues;
+}
+
+export type CardDocument = {
+  name: string;
+  atom: string;
+  durability: "once" | "lasting";
+  seen: number;
+  lock: "architecture" | "assert" | "test";
+  naiveExpect: boolean;
+  status: "candidate" | "latched";
+};
+
+export function validateCard(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["card: 必须是对象"];
+  if (typeof value.name !== "string" || !NAME_RE.test(value.name)) {
+    issues.push("card.name: 非法名称");
+  }
+  if (typeof value.atom !== "string" || !value.atom.trim()) {
+    issues.push("card.atom: 必填");
+  }
+  if (!["once", "lasting"].includes(String(value.durability))) {
+    issues.push("card.durability: 只能是 once 或 lasting");
+  }
+  if (typeof value.seen !== "number" || !Number.isInteger(value.seen) || value.seen < 0) {
+    issues.push("card.seen: 需要大于等于 0 的整数");
+  }
+  if (!["architecture", "assert", "test"].includes(String(value.lock))) {
+    issues.push("card.lock: 只能是 architecture / assert / test，散文不能单独晋升");
+  }
+  if (typeof value.naiveExpect !== "boolean") {
+    issues.push("card.naiveExpect: 必须是布尔值");
+  }
+  if (!["candidate", "latched"].includes(String(value.status))) {
+    issues.push("card.status: 只能是 candidate 或 latched");
+  }
+  return issues;
+}
+
+export type ExamQuestion = {
+  role: "routine" | "trap";
+  expect: boolean;
+  source: { path: string; sha256: string };
+  fixture: { added: string[]; removed: string[]; changedPaths: string[] };
+};
+
+export type ExamDocument = { questions: ExamQuestion[] };
+
+function fixtureKey(fixture: ExamQuestion["fixture"]): string {
+  return JSON.stringify({
+    added: fixture.added,
+    removed: fixture.removed,
+    changedPaths: [...fixture.changedPaths].sort(),
+  });
+}
+
+export function validateExam(card: { naiveExpect?: boolean }, value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value) || !Array.isArray(value.questions)) {
+    return ["exam.questions: 需要数组"];
+  }
+  if (value.questions.length !== 3) {
+    issues.push("exam: 必须恰好三题");
+  }
+  const questions: ExamQuestion[] = [];
+  value.questions.forEach((raw, i) => {
+    const p = `exam.questions[${i}]`;
+    if (!isRecord(raw)) {
+      issues.push(`${p}: 必须是对象`);
+      return;
+    }
+    if (raw.role !== "routine" && raw.role !== "trap") {
+      issues.push(`${p}.role: 只能是 routine 或 trap`);
+    }
+    if (typeof raw.expect !== "boolean") issues.push(`${p}.expect: 必须是布尔值`);
+    if (
+      !isRecord(raw.source) ||
+      typeof raw.source.path !== "string" ||
+      !raw.source.path.trim() ||
+      typeof raw.source.sha256 !== "string" ||
+      !SHA256_RE.test(raw.source.sha256)
+    ) {
+      issues.push(`${p}.source: 需要 { path, sha256 }`);
+    }
+    if (
+      !isRecord(raw.fixture) ||
+      !isStringArray(raw.fixture.added) ||
+      !isStringArray(raw.fixture.removed) ||
+      !isStringArray(raw.fixture.changedPaths)
+    ) {
+      issues.push(`${p}.fixture: 需要 added / removed / changedPaths 字符串数组`);
+      return;
+    }
+    questions.push(raw as ExamQuestion);
+  });
+  const routines = questions.filter((q) => q.role === "routine").length;
+  const traps = questions.filter((q) => q.role === "trap").length;
+  if (questions.length === 3 && (routines !== 2 || traps !== 1)) {
+    issues.push("exam: 角色必须是两道 routine 加一道 trap");
+  }
+  if (questions.length === 3 && new Set(questions.map((q) => fixtureKey(q.fixture))).size !== 3) {
+    issues.push("exam: 三份夹具必须两两不同");
+  }
+  const trap = questions.find((q) => q.role === "trap");
+  if (trap && typeof card.naiveExpect === "boolean" && trap.expect === card.naiveExpect) {
+    issues.push("exam: 陷阱题的期望必须不同于 naiveExpect");
+  }
+  return issues;
+}
+
+export function validateMap(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["map: 必须是对象"];
+  if (typeof value.name !== "string" || !NAME_RE.test(value.name)) {
+    issues.push("map.name: 非法名称");
+  }
+  if (!Array.isArray(value.entries) || value.entries.length === 0) {
+    issues.push("map.entries: 需要非空数组");
+    return issues;
+  }
+  const ids = new Set<string>();
+  value.entries.forEach((raw, i) => {
+    const p = `entries[${i}]`;
+    if (!isRecord(raw)) {
+      issues.push(`${p}: 必须是对象`);
+      return;
+    }
+    if (typeof raw.id !== "string" || !NAME_RE.test(raw.id)) {
+      issues.push(`${p}.id: 非法名称`);
+    } else if (ids.has(raw.id)) {
+      issues.push(`${p}.id: 重复「${raw.id}」`);
+    } else {
+      ids.add(raw.id);
+    }
+    if (!isStringArray(raw.aliases) || raw.aliases.length === 0) {
+      issues.push(`${p}.aliases: 需要非空字符串数组`);
+    }
+    if (typeof raw.location !== "string" || !raw.location.trim()) {
+      issues.push(`${p}.location: 必填`);
+    }
+    if (typeof raw.observe !== "string" || !raw.observe.trim()) {
+      issues.push(`${p}.observe: 必填`);
+    }
+    issues.push(
+      ...validateDomain({
+        name: typeof raw.id === "string" && NAME_RE.test(raw.id) ? raw.id : "entry",
+        description: "map entry",
+        steps: raw.steps,
+      }).map((msg) => `${p}.${msg}`),
+    );
   });
   return issues;
 }

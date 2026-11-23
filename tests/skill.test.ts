@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateSkill } from "../shared/skill.js";
+import { readSkill, validateSkill } from "../shared/skill.js";
 import { validateDomain, validateRoute, validateSettings } from "../shared/schema.js";
 import { NAME_RE, resolveWithin } from "../shared/paths.js";
 import { LIBRARY_DIR } from "../shared/paths.js";
@@ -14,6 +14,18 @@ test("skill name follows the Agent Skills spec", () => {
   assert.ok(validateSkill("abc", { name: "other", description: desc }).length > 0);
   assert.ok(NAME_RE.test("pdf-2"));
   assert.ok(!NAME_RE.test("pdf--2"));
+});
+
+test("the six core skills validate and the entry names the other five", async () => {
+  const names = ["daily-loop", "on-site", "function-map", "error-card", "exam-pass", "hard-lock"];
+  for (const name of names) {
+    const skill = await readSkill(name);
+    assert.deepEqual(skill.issues, [], `${name}: ${skill.issues.join("；")}`);
+  }
+  const entry = await readSkill("daily-loop");
+  for (const name of names.slice(1)) {
+    assert.ok(entry.body.includes(name), `daily-loop 未点名 ${name}`);
+  }
 });
 
 test("optional frontmatter fields are validated", () => {

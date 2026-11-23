@@ -1,0 +1,12 @@
+{
+  "name": "daily-contract",
+  "description": "任务契约已通过，进入功能地图",
+  "steps": [
+    {
+      "id": "task-present",
+      "kind": "assert",
+      "atom": "task.present",
+      "expect": true
+    }
+  ]
+}

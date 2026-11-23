@@ -24,6 +24,18 @@ export type JournalEntry = {
 
 export type RunResultRecord = { ok: boolean; log: string[] };
 
+export type ReadReceipt = { path: string; sha256: string };
+
+export type JournalPayload = {
+  map?: {
+    app: string;
+    query: string;
+    state: "hit" | "miss" | "ambiguous";
+    entryId: string | null;
+    entryIds: string[];
+  };
+};
+
 export type Journal = {
   version: 1;
   route: string;
@@ -35,6 +47,8 @@ export type Journal = {
   slotAnswers: Record<string, SlotAnswer>;
   runResults: Record<string, RunResultRecord>;
   entries: JournalEntry[];
+  reads: ReadReceipt[];
+  payload: JournalPayload;
   status: JournalStatus;
   currentStage: string;
   updatedAt: string;
@@ -107,6 +121,8 @@ export function newJournal(binding: JournalBinding): Journal {
     slotAnswers: {},
     runResults: {},
     entries: [],
+    reads: [],
+    payload: {},
     status: "in-progress",
     currentStage: "entry",
     updatedAt: new Date().toISOString(),
@@ -167,6 +183,39 @@ export function appendEntry(
   const full: JournalEntry = { ...base, hash: sha256(base) };
   journal.entries.push(full);
   return full;
+}
+
+export function readsPath(repo: string): string {
+  return path.join(journalDir(repo), "reads.json");
+}
+
+export async function rememberRead(
+  repo: string,
+  rel: string,
+  sha256hex: string,
+): Promise<void> {
+  await ensureLatchGitignore(repo);
+  const file = readsPath(repo);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  let list: ReadReceipt[] = [];
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf8")) as unknown;
+    if (Array.isArray(parsed)) list = parsed as ReadReceipt[];
+  } catch {
+    list = [];
+  }
+  const next = list.filter((item) => item.path !== rel);
+  next.push({ path: rel, sha256: sha256hex });
+  await fs.writeFile(file, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
+export async function readReceipts(repo: string): Promise<ReadReceipt[]> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(readsPath(repo), "utf8")) as unknown;
+    return Array.isArray(parsed) ? (parsed as ReadReceipt[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function verifyChain(journal: Journal): boolean {

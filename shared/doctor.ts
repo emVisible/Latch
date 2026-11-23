@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { atomNames, loadAtomRegistry } from "./atoms.js";
+import { cardProblems, listCards } from "./card.js";
 import { listDomains, readDomain } from "./domain.js";
 import { hookStatus } from "./hooks.js";
 import { hashRoute } from "./linkmap.js";
@@ -46,6 +47,11 @@ export async function runDoctor(): Promise<string> {
     } catch (e) {
       note(false, `domain ${name} 读取失败：${String(e)}`);
     }
+  }
+
+  for (const name of await listCards()) {
+    const issues = await cardProblems(name);
+    note(issues.length === 0, `card ${name}：${issues.length ? issues.join("；") : "原子与 skill 成对"}`);
   }
 
   const routes = await listRoutes();

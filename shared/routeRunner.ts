@@ -18,6 +18,9 @@ import type { CompileReport } from "./linkmap.js";
 import type { RouteDefinition, RouteLink } from "./route.js";
 import { validateRoute } from "./schema.js";
 import { collectSnapshot, SnapshotError, type Snapshot } from "./snapshot.js";
+import { noteSightings, routeDeclaresSlot } from "./card.js";
+import { LeaseError, acquireLease, gitRoot, stampLease } from "./lease.js";
+import { runMapFollow } from "./map.js";
 import { formatRunOutput, runDomain } from "./runner.js";
 import { routeFixturesDir } from "./paths.js";
 
@@ -221,6 +224,32 @@ export async function runRoute(
     };
   }
 
+  let release = async () => {};
+  try {
+    release = await acquireLease(gitRoot(cwd));
+  } catch (e) {
+    if (e instanceof LeaseError) {
+      return {
+        ...base,
+        exitCode: 1,
+        status: "blocked",
+        ok: false,
+        log: [`[租约] ${e.message}`],
+        journal: newJournal({
+          route: name,
+          repo: base.repo,
+          window: windowSpec,
+          snapshotHash: "",
+          routeHash: compile.linkmap.routeHash,
+          atomsHash: registry.hash,
+        }),
+        compile,
+      };
+    }
+    throw e;
+  }
+
+  try {
   let snapshot: Snapshot;
   try {
     snapshot = await collectStableSnapshot(cwd, windowSpec);
@@ -262,6 +291,8 @@ export async function runRoute(
     "",
   ];
 
+  await noteSightings(snapshot.repo, evaluation.values, snapshot.hash);
+
   if (evaluation.unknown.length > 0) {
     log.push(`[原子缺失] ${evaluation.unknown.join(", ")}`);
     return {
@@ -279,7 +310,9 @@ export async function runRoute(
 
   const previous = await readJournal(snapshot.repo);
   const reusable: boolean = previous ? isJournalValid(previous, binding) : false;
+  await stampLease(snapshot.repo, snapshot.hash);
   const journal = newJournal(binding);
+  journal.payload = snapshot.map ? { map: snapshot.map } : {};
   if (reusable && previous) {
     journal.slotAnswers = { ...previous.slotAnswers };
   } else if (previous) {
@@ -359,12 +392,17 @@ export async function runRoute(
     }
 
     if (to.kind === "run") {
-      const result = await runDomain(to.domain, snapshot.repo, {
+      const runOptions = {
         atomValues: evaluation.values,
         slots: journal.slotAnswers,
-        slotPolicy: "defer",
+        slotPolicy: "defer" as const,
         emitReadContent: false,
-      });
+      };
+      const result =
+        to.domain === "map-follow"
+          ? await runMapFollow(snapshot, runOptions)
+          : await runDomain(to.domain, snapshot.repo, runOptions);
+      journal.reads.push(...result.reads);
       journal.runResults[to.domain] = { ok: result.ok, log: result.log };
       for (const step of result.steps) {
         log.push(`    ${step.ok ? "ok" : "FAIL"} ${step.kind} ${step.id}${step.detail ? ` · ${step.detail}` : ""}`);
@@ -395,6 +433,9 @@ export async function runRoute(
     journal,
     compile,
   };
+  } finally {
+    await release();
+  }
 }
 
 async function findSlotQuestion(
@@ -424,6 +465,9 @@ export async function answerSlot(
   windowSpec = "worktree",
 ): Promise<{ ok: boolean; message: string }> {
   const route = await readRoute(routeName);
+  if (!routeDeclaresSlot(route, slotId)) {
+    return { ok: false, message: `路由 ${routeName} 没有声明 slot ${slotId}` };
+  }
   const registry = await loadAtomRegistry();
   const compile = await loadCompile(route, registry.hash);
   const snapshot = await collectStableSnapshot(cwd, windowSpec);

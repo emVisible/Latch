@@ -47,4 +47,40 @@ export const atoms = {
     const hits = matchPaths(snapshot, /(?:^|\/)components\/charts\/|OptionAnalysisCard/i);
     return result(hits.length > 0, hits);
   },
+
+  "task.present": (snapshot) => result(Boolean(snapshot.task), []),
+
+  "claim.unsourced": (snapshot) => {
+    const returns = snapshot.task?.returns ?? [];
+    const hits = returns.filter((item) => !item.path).map((item) => item.fact);
+    return result(Boolean(snapshot.task) && hits.length > 0, hits);
+  },
+
+  "claim.unresolved": (snapshot) => {
+    const returns = snapshot.task?.returns ?? [];
+    const files = snapshot.files ?? {};
+    const hits = [];
+    for (const item of returns) {
+      if (!item.path) continue;
+      const actual = files[item.path];
+      if (!item.sha256 || !actual || actual !== item.sha256) hits.push(item.path);
+    }
+    return result(Boolean(snapshot.task) && hits.length > 0, hits);
+  },
+
+  "write.undeclared": (snapshot) => {
+    if (!snapshot.task) return result(false, []);
+    const allow = new Set(snapshot.task.writable ?? []);
+    const hits = (snapshot.changedPaths ?? []).filter(
+      (p) => p && !p.startsWith(".latch/") && !allow.has(p),
+    );
+    return result(hits.length > 0, hits);
+  },
+
+  "map.hit": (snapshot) =>
+    result(snapshot.map?.state === "hit", snapshot.map?.entryId ? [snapshot.map.entryId] : []),
+
+  "map.miss": (snapshot) => result(!snapshot.map || snapshot.map.state === "miss", []),
+
+  "map.ambiguous": (snapshot) => result(snapshot.map?.state === "ambiguous", []),
 };

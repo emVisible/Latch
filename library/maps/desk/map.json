@@ -1,0 +1,32 @@
+{
+  "name": "desk",
+  "entries": [
+    {
+      "id": "charts",
+      "aliases": ["图表", "chart", "数据"],
+      "location": "components/charts/",
+      "observe": "证据里能看见图表刻度",
+      "steps": [
+        { "id": "read-agents", "kind": "read", "paths": ["AGENTS.md"] }
+      ]
+    },
+    {
+      "id": "tables",
+      "aliases": ["表格", "table", "数据"],
+      "location": "components/tables/",
+      "observe": "证据里能看见表格表头",
+      "steps": [
+        { "id": "read-agents", "kind": "read", "paths": ["AGENTS.md"] }
+      ]
+    },
+    {
+      "id": "notes",
+      "aliases": ["笔记", "notes"],
+      "location": "NOTES.md",
+      "observe": "打开笔记文件",
+      "steps": [
+        { "id": "read-notes", "kind": "read", "paths": ["NOTES.md"] }
+      ]
+    }
+  ]
+}

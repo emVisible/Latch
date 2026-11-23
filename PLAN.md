@@ -4,6 +4,10 @@ Latch（闩）是一个本地技能库控制台。它只管两件事：技能从
 
 > 2026-11-04：v1 更进依据见 [docs/v1-research-plan.md](docs/v1-research-plan.md)。本文件保留三层定位与静态域原设计；阶段表、全链接路由、状态与入口设计以新文档为准。
 
+> 2026-11-22：自循环（任务契约、功能地图、错误卡、三题考卷、租约）见 [docs/v2-loop.md](docs/v2-loop.md)。散文 skill 仍然只作解释；能晋升的错误必须先有检查原子和三题全过。
+
+> 2026-11-23：v2 收到这里。下一版只补现场核对、考卷与作者分开、daily 走得到的闩，见 [docs/v3-direction.md](docs/v3-direction.md)。
+
 ## 名字与标记
 
 - 仓库：`~/Company/latch`

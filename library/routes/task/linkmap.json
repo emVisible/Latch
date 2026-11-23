@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "route": "task",
+  "generatedAt": "2026-11-23T07:53:54.933Z",
+  "routeHash": "58c38cfb3d09b87e",
+  "atomsHash": "d029047e307a521d",
+  "policy": "unique",
+  "stages": {
+    "entry": {
+      "scope": [
+        "task.present",
+        "claim.unsourced",
+        "claim.unresolved",
+        "write.undeclared"
+      ],
+      "feasible": 9,
+      "links": [
+        {
+          "id": "absent",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": false,
+            "claim.unsourced": false,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        },
+        {
+          "id": "breach",
+          "satisfying": 7,
+          "minimalAssignment": {
+            "task.present": true,
+            "claim.unsourced": true,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        },
+        {
+          "id": "clean",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": true,
+            "claim.unsourced": false,
+            "claim.unresolved": false,
+            "write.undeclared": false
+          }
+        }
+      ]
+    }
+  },
+  "issueCount": 0
+}

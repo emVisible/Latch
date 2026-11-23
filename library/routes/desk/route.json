@@ -1,0 +1,68 @@
+{
+  "name": "desk",
+  "version": 1,
+  "policy": "unique",
+  "maxRounds": 4,
+  "routingAtoms": ["map.hit", "map.miss", "map.ambiguous"],
+  "resultAtoms": {
+    "run.follow.ok": {
+      "from": "domain",
+      "domain": "map-follow",
+      "field": "ok"
+    }
+  },
+  "constraints": [
+    "map.hit => !map.miss",
+    "map.hit => !map.ambiguous",
+    "map.miss => !map.ambiguous"
+  ],
+  "molecules": {},
+  "stages": {
+    "entry": {
+      "scope": ["map.hit", "map.miss", "map.ambiguous"],
+      "links": [
+        {
+          "id": "miss",
+          "when": "map.miss",
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图未命中" }
+        },
+        {
+          "id": "ambiguous",
+          "when": "map.ambiguous",
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图有歧义" }
+        },
+        {
+          "id": "unset",
+          "when": {
+            "all": [
+              { "not": "map.hit" },
+              { "not": "map.miss" },
+              { "not": "map.ambiguous" }
+            ]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图尚未解析" }
+        },
+        {
+          "id": "hit",
+          "when": "map.hit",
+          "to": { "kind": "run", "domain": "map-follow", "then": "after-follow" }
+        }
+      ]
+    },
+    "after-follow": {
+      "scope": ["run.follow.ok"],
+      "links": [
+        {
+          "id": "follow-failed",
+          "when": { "not": "run.follow.ok" },
+          "to": { "kind": "stop", "exit": 1, "reason": "地图步骤未通过" }
+        },
+        {
+          "id": "done",
+          "when": "run.follow.ok",
+          "to": { "kind": "stop", "exit": 0, "reason": "地图步骤完成" }
+        }
+      ]
+    }
+  }
+}

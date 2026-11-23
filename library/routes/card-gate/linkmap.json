@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "route": "card-gate",
+  "generatedAt": "2026-11-23T08:27:30.512Z",
+  "routeHash": "5323346096afabc3",
+  "atomsHash": "d029047e307a521d",
+  "policy": "unique",
+  "stages": {
+    "entry": {
+      "scope": [
+        "task.present"
+      ],
+      "feasible": 2,
+      "links": [
+        {
+          "id": "ask-without-task",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": false
+          }
+        },
+        {
+          "id": "ask-with-task",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "task.present": true
+          }
+        }
+      ]
+    },
+    "after-slot": {
+      "scope": [
+        "slot.answered",
+        "slot.pass"
+      ],
+      "feasible": 3,
+      "links": [
+        {
+          "id": "pending",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "slot.answered": false,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "refused",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "slot.answered": true,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "done",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "slot.answered": true,
+            "slot.pass": true
+          }
+        }
+      ]
+    }
+  },
+  "issueCount": 0
+}

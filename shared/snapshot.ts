@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { repoLatch } from "./paths.js";
+import { validateTask, type TaskDocument } from "./schema.js";
 
 export class SnapshotError extends Error {
   constructor(message: string) {
@@ -9,6 +11,16 @@ export class SnapshotError extends Error {
     this.name = "SnapshotError";
   }
 }
+
+export type EvidenceFile = { path: string; sha256: string };
+
+export type SnapshotMap = {
+  app: string;
+  query: string;
+  state: "hit" | "miss" | "ambiguous";
+  entryId: string | null;
+  entryIds: string[];
+};
 
 export type Snapshot = {
   version: 1;
@@ -18,6 +30,11 @@ export type Snapshot = {
   added: string[];
   removed: string[];
   changedPaths: string[];
+  task: TaskDocument | null;
+  evidence: EvidenceFile[];
+  /** sha256 of files the task points at, plus evidence files. */
+  files: Record<string, string>;
+  map: SnapshotMap | null;
   hash: string;
   capturedAt: string;
 };
@@ -51,19 +68,35 @@ function sha256(value: unknown): string {
     .digest("hex");
 }
 
-export function snapshotHash(
-  repo: string,
-  window: string,
-  gitHead: string | null,
-  input: SnapshotInput,
-): string {
+function stableFiles(files: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(files).sort()) out[key] = files[key];
+  return out;
+}
+
+export function snapshotHash(snapshot: {
+  repo: string;
+  window: string;
+  gitHead: string | null;
+  added: string[];
+  removed: string[];
+  changedPaths: string[];
+  task: TaskDocument | null;
+  evidence: EvidenceFile[];
+  files: Record<string, string>;
+  map: SnapshotMap | null;
+}): string {
   return sha256({
-    repo,
-    window,
-    gitHead,
-    added: input.added,
-    removed: input.removed,
-    changedPaths: [...input.changedPaths].sort(),
+    repo: snapshot.repo,
+    window: snapshot.window,
+    gitHead: snapshot.gitHead,
+    added: snapshot.added,
+    removed: snapshot.removed,
+    changedPaths: [...snapshot.changedPaths].sort(),
+    task: snapshot.task,
+    evidence: [...snapshot.evidence].sort((a, b) => a.path.localeCompare(b.path)),
+    files: stableFiles(snapshot.files),
+    map: snapshot.map,
   });
 }
 
@@ -128,20 +161,28 @@ function makeSnapshot(
   window: string,
   gitHead: string | null,
   input: SnapshotInput,
+  extra: {
+    task?: TaskDocument | null;
+    evidence?: EvidenceFile[];
+    files?: Record<string, string>;
+    map?: SnapshotMap | null;
+  } = {},
 ): Snapshot {
-  const changedPaths = [...new Set(input.changedPaths)].sort();
-  const normalized = { ...input, changedPaths };
-  return {
-    version: 1,
+  const draft = {
+    version: 1 as const,
     repo,
     window,
     gitHead,
     added: input.added,
     removed: input.removed,
-    changedPaths,
-    hash: snapshotHash(repo, window, gitHead, normalized),
+    changedPaths: [...new Set(input.changedPaths)].sort(),
+    task: extra.task ?? null,
+    evidence: extra.evidence ?? [],
+    files: extra.files ?? {},
+    map: extra.map ?? null,
     capturedAt: new Date().toISOString(),
   };
+  return { ...draft, hash: snapshotHash(draft) };
 }
 
 /** Build a snapshot from a fixture payload (used by --window=fixture:<file> and tests). */
@@ -162,6 +203,121 @@ export function snapshotFromFixture(
  * untracked new files; the worktree window reads them directly (read-only,
  * no `git add -N` on the user's index).
  */
+async function hashFile(full: string): Promise<string | null> {
+  try {
+    const buf = await fs.readFile(full);
+    return crypto.createHash("sha256").update(buf).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+async function listEvidence(dir: string): Promise<EvidenceFile[]> {
+  const out: EvidenceFile[] = [];
+  async function walk(current: string) {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const sha = await hashFile(full);
+      if (!sha) continue;
+      out.push({ path: path.relative(dir, full).split(path.sep).join("/"), sha256: sha });
+    }
+  }
+  await walk(dir);
+  return out;
+}
+
+async function readTask(repo: string): Promise<TaskDocument | null> {
+  const file = repoLatch(repo, "task.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new SnapshotError(`无法读取任务单：${String(e)}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new SnapshotError(`任务单不是 JSON：${String(e)}`);
+  }
+  const issues = validateTask(parsed);
+  if (issues.length) throw new SnapshotError(issues.join("；"));
+  return parsed as TaskDocument;
+}
+
+async function readResolution(repo: string): Promise<SnapshotMap | null> {
+  const file = repoLatch(repo, "map-resolution.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new SnapshotError(`无法读取地图解析：${String(e)}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new SnapshotError(`地图解析不是 JSON：${String(e)}`);
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    typeof (parsed as { app?: unknown }).app !== "string" ||
+    !["hit", "miss", "ambiguous"].includes(String((parsed as { state?: unknown }).state))
+  ) {
+    throw new SnapshotError("地图解析不合法");
+  }
+  const rec = parsed as {
+    app: string;
+    query?: string;
+    state: SnapshotMap["state"];
+    entryId?: string | null;
+    entryIds?: string[];
+  };
+  return {
+    app: rec.app,
+    query: rec.query ?? "",
+    state: rec.state,
+    entryId: rec.entryId ?? null,
+    entryIds: Array.isArray(rec.entryIds) ? rec.entryIds : [],
+  };
+}
+
+export async function writeTaskFile(repo: string, task: TaskDocument): Promise<void> {
+  const issues = validateTask(task);
+  if (issues.length) throw new SnapshotError(issues.join("；"));
+  const file = repoLatch(repo, "task.json");
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, `${JSON.stringify(task, null, 2)}\n`, "utf8");
+}
+
+async function attachContext(snapshot: Snapshot): Promise<Snapshot> {
+  const task = await readTask(snapshot.repo);
+  const map = await readResolution(snapshot.repo);
+  const files = { ...snapshot.files };
+  for (const item of snapshot.evidence) files[item.path] = item.sha256;
+  for (const item of task?.returns ?? []) {
+    if (!item.path || files[item.path]) continue;
+    const hashed = await hashFile(path.join(snapshot.repo, item.path));
+    if (hashed) files[item.path] = hashed;
+  }
+  return makeSnapshot(
+    snapshot.repo,
+    snapshot.window,
+    snapshot.gitHead,
+    snapshot,
+    { task, evidence: snapshot.evidence, files, map },
+  );
+}
+
 export async function collectSnapshot(
   cwd: string,
   windowSpec = "worktree",
@@ -177,7 +333,35 @@ export async function collectSnapshot(
     } catch (e) {
       throw new SnapshotError(`无法读取夹具 ${target}: ${String(e)}`);
     }
-    return snapshotFromFixture(payload, repo, windowSpec);
+    return attachContext(snapshotFromFixture(payload, repo, windowSpec));
+  }
+
+  if (windowSpec.startsWith("evidence:")) {
+    const rel = windowSpec.slice("evidence:".length);
+    if (!rel) throw new SnapshotError("evidence: 窗口缺少目录");
+    const dir = path.isAbsolute(rel) ? rel : path.join(repo, rel);
+    let evidence: EvidenceFile[];
+    try {
+      evidence = await listEvidence(dir);
+    } catch (e) {
+      throw new SnapshotError(`无法读取证据目录 ${dir}: ${String(e)}`);
+    }
+    const top = git(repo, ["rev-parse", "--show-toplevel"])?.trim();
+    const gitRoot = top || repo;
+    const head = top ? git(repo, ["rev-parse", "HEAD"])?.trim() || null : null;
+    let changedPaths: string[] = [];
+    if (top) {
+      const nameOnly = git(repo, ["diff", "--name-only", "HEAD"]) ?? "";
+      const diff = git(repo, ["diff", "HEAD"]) ?? "";
+      changedPaths = [...nameOnly.split("\n").filter(Boolean), ...diffPaths(diff)];
+    }
+    return attachContext(
+      makeSnapshot(gitRoot, windowSpec, head, {
+        added: [],
+        removed: [],
+        changedPaths,
+      }, { evidence }),
+    );
   }
 
   const rootOut = gitOrThrow(repo, ["rev-parse", "--show-toplevel"]);
@@ -216,7 +400,7 @@ export async function collectSnapshot(
     nameOnly = gitOrThrow(repo, ["diff", "--name-only", ref]);
   } else {
     throw new SnapshotError(
-      `未知窗口「${windowSpec}」：worktree / staged / last-commit / range:<ref> / fixture:<file>`,
+      `未知窗口「${windowSpec}」：worktree / staged / last-commit / range:<ref> / fixture:<file> / evidence:<dir>`,
     );
   }
 
@@ -230,8 +414,10 @@ export async function collectSnapshot(
     parsed.added.push(...(await readUntracked(gitRoot, untracked)));
   }
 
-  return makeSnapshot(gitRoot, windowSpec, head, {
-    ...parsed,
-    changedPaths,
-  });
+  return attachContext(
+    makeSnapshot(gitRoot, windowSpec, head, {
+      ...parsed,
+      changedPaths,
+    }),
+  );
 }

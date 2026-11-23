@@ -1,0 +1,58 @@
+{
+  "name": "card-gate",
+  "version": 1,
+  "policy": "unique",
+  "maxRounds": 4,
+  "routingAtoms": ["task.present"],
+  "resultAtoms": {
+    "slot.answered": {
+      "from": "slot",
+      "slot": "card-promote",
+      "field": "answered"
+    },
+    "slot.pass": {
+      "from": "slot",
+      "slot": "card-promote",
+      "field": "pass"
+    }
+  },
+  "constraints": ["slot.pass => slot.answered"],
+  "molecules": {},
+  "stages": {
+    "entry": {
+      "scope": ["task.present"],
+      "links": [
+        {
+          "id": "ask-without-task",
+          "when": { "not": "task.present" },
+          "to": { "kind": "ask", "slot": "card-promote", "then": "after-slot" }
+        },
+        {
+          "id": "ask-with-task",
+          "when": "task.present",
+          "to": { "kind": "ask", "slot": "card-promote", "then": "after-slot" }
+        }
+      ]
+    },
+    "after-slot": {
+      "scope": ["slot.answered", "slot.pass"],
+      "links": [
+        {
+          "id": "pending",
+          "when": { "not": "slot.answered" },
+          "to": { "kind": "stop", "exit": 1, "reason": "slot 未答" }
+        },
+        {
+          "id": "refused",
+          "when": { "all": ["slot.answered", { "not": "slot.pass" }] },
+          "to": { "kind": "stop", "exit": 1, "reason": "晋升被拒" }
+        },
+        {
+          "id": "done",
+          "when": { "all": ["slot.answered", "slot.pass"] },
+          "to": { "kind": "stop", "exit": 0, "reason": "允许进入考卷" }
+        }
+      ]
+    }
+  }
+}

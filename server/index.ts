@@ -325,7 +325,7 @@ app.post("/api/hooks/install", async (c) => {
   }>();
   const target = (await loadSettings()).targets.find((t) => t.id === targetId);
   if (!target) return c.json({ error: "unknown target" }, 400);
-  return c.json(await installHooks(target.path, route ?? "openstrat", { window }));
+  return c.json(await installHooks(target.path, route ?? "daily", { window }));
 });
 
 const port = Number(process.env.PORT ?? 8787);

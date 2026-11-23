@@ -1,0 +1,43 @@
+{
+  "questions": [
+    {
+      "role": "routine",
+      "expect": true,
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  useEffect(() => {});"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    },
+    {
+      "role": "routine",
+      "expect": false,
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  const n = 1;"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    },
+    {
+      "role": "trap",
+      "expect": true,
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  // useEffect later"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    }
+  ]
+}

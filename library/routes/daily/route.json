@@ -1,0 +1,124 @@
+{
+  "name": "daily",
+  "version": 1,
+  "policy": "unique",
+  "maxRounds": 4,
+  "routingAtoms": [
+    "task.present",
+    "claim.unsourced",
+    "claim.unresolved",
+    "write.undeclared",
+    "map.hit",
+    "map.miss",
+    "map.ambiguous"
+  ],
+  "resultAtoms": {
+    "run.contract.ok": {
+      "from": "domain",
+      "domain": "daily-contract",
+      "field": "ok"
+    },
+    "run.follow.ok": {
+      "from": "domain",
+      "domain": "map-follow",
+      "field": "ok"
+    }
+  },
+  "constraints": [
+    "claim.unsourced => task.present",
+    "claim.unresolved => task.present",
+    "write.undeclared => task.present",
+    "map.hit => !map.miss",
+    "map.hit => !map.ambiguous",
+    "map.miss => !map.ambiguous"
+  ],
+  "molecules": {},
+  "stages": {
+    "entry": {
+      "scope": [
+        "task.present",
+        "claim.unsourced",
+        "claim.unresolved",
+        "write.undeclared"
+      ],
+      "links": [
+        {
+          "id": "absent",
+          "when": { "not": "task.present" },
+          "to": { "kind": "stop", "exit": 1, "reason": "没有任务单" }
+        },
+        {
+          "id": "breach",
+          "when": {
+            "any": ["claim.unsourced", "claim.unresolved", "write.undeclared"]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "任务契约未通过" }
+        },
+        {
+          "id": "clean",
+          "when": {
+            "all": [
+              "task.present",
+              { "not": "claim.unsourced" },
+              { "not": "claim.unresolved" },
+              { "not": "write.undeclared" }
+            ]
+          },
+          "to": { "kind": "run", "domain": "daily-contract", "then": "map" }
+        }
+      ]
+    },
+    "map": {
+      "scope": ["run.contract.ok", "map.hit", "map.miss", "map.ambiguous"],
+      "links": [
+        {
+          "id": "contract-failed",
+          "when": { "not": "run.contract.ok" },
+          "to": { "kind": "stop", "exit": 1, "reason": "任务契约域未通过" }
+        },
+        {
+          "id": "miss",
+          "when": { "all": ["run.contract.ok", "map.miss"] },
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图未命中" }
+        },
+        {
+          "id": "ambiguous",
+          "when": { "all": ["run.contract.ok", "map.ambiguous"] },
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图有歧义" }
+        },
+        {
+          "id": "unset",
+          "when": {
+            "all": [
+              "run.contract.ok",
+              { "not": "map.hit" },
+              { "not": "map.miss" },
+              { "not": "map.ambiguous" }
+            ]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "功能地图尚未解析" }
+        },
+        {
+          "id": "hit",
+          "when": { "all": ["run.contract.ok", "map.hit"] },
+          "to": { "kind": "run", "domain": "map-follow", "then": "after-follow" }
+        }
+      ]
+    },
+    "after-follow": {
+      "scope": ["run.follow.ok"],
+      "links": [
+        {
+          "id": "follow-failed",
+          "when": { "not": "run.follow.ok" },
+          "to": { "kind": "stop", "exit": 1, "reason": "地图步骤未通过" }
+        },
+        {
+          "id": "done",
+          "when": "run.follow.ok",
+          "to": { "kind": "stop", "exit": 0, "reason": "日常任务完成" }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "map-follow",
+  "description": "执行功能地图唯一命中条目的直线步骤",
+  "steps": [
+    {
+      "id": "read-agents",
+      "kind": "read",
+      "paths": ["AGENTS.md"]
+    }
+  ]
+}
