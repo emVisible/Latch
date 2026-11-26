@@ -10,6 +10,7 @@ export type Expr =
 export type RouteAction =
   | { kind: "run"; domain: string; then: string }
   | { kind: "ask"; slot: string; then: string }
+  | { kind: "goto"; then: string }
   | { kind: "stop"; exit: 0 | 1; reason: string };
 
 export type RouteLink = {

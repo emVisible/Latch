@@ -1,27 +1,75 @@
-import { matchAdded, matchPaths, result } from "./lib/diff.mjs";
+import { matchAdded, result } from "./lib/diff.mjs";
+
+function evidenceCovers(evidence, returnPath) {
+  return (
+    evidence === returnPath ||
+    evidence.endsWith(`/${returnPath}`) ||
+    returnPath.endsWith(`/${evidence}`)
+  );
+}
 
 /*
  * Shared atom registry.
  * Every atom is a pure function atom(snapshot) -> { value, hits }.
- * `value: true` means the fact is present (for discipline atoms: a breach).
+ * Discipline atoms are false unless latch.policy.json enables them, so a
+ * runtime assignment stays inside the route compiler's constraints.
  * Snapshot is produced once by shared/snapshot.ts; atoms never shell out to git.
  */
+
+function enabled(snapshot) {
+  return snapshot.policy?.changeDiscipline?.enabled === true;
+}
+
+function commentLine(line) {
+  return /^\+\s*(?:\/\/|\/\*|\*)/.test(line);
+}
+
+function moduleConstName(line, pattern) {
+  const match = line.match(pattern);
+  return match ? match[1] : null;
+}
+
+const CAMEL_CONST =
+  /^\+\s*(?:export\s+)?const ([a-z][a-zA-Z0-9]*) = ([\d"'`]|true|false)/;
+const SNAKE_CONST =
+  /^\+\s*(?:export\s+)?const ([A-Z][A-Z0-9_]*) = ([\d"'`]|true|false)/;
+
 export const atoms = {
+  "policy.active": (snapshot) => result(enabled(snapshot), []),
+
+  "changes.present": (snapshot) => {
+    const paths = (snapshot.changedPaths ?? []).filter(
+      (p) => p && !p.startsWith(".latch/"),
+    );
+    const lines =
+      (snapshot.added ?? []).length + (snapshot.removed ?? []).length > 0;
+    const knownPaths = (snapshot.changedPaths ?? []).length > 0;
+    // .latch bookkeeping is not a code change. Lines with no path (fixtures) still count.
+    const present = paths.length > 0 || (lines && !knownPaths);
+    return result(present, paths);
+  },
+
   "diff.useEffect": (snapshot) => {
+    if (!enabled(snapshot)) return result(false, []);
     const hits = matchAdded(snapshot, /\buseEffect\s*\(/);
     return result(hits.length > 0, hits);
   },
 
   "diff.tabKeepalive": (snapshot) => {
-    const hits = matchAdded(snapshot, (line) =>
-      /\bvisitedTabs\b/.test(line) ||
-      /display:\s*["']none["']/.test(line) ||
-      /style=\{\{[^}]*display:\s*["']none["']/.test(line),
-    );
+    if (!enabled(snapshot)) return result(false, []);
+    const hits = matchAdded(snapshot, (line) => {
+      if (commentLine(line)) return false;
+      return (
+        /\bvisitedTabs\b/.test(line) ||
+        /display:\s*["']none["']/.test(line) ||
+        /style=\{\{[^}]*display:\s*["']none["']/.test(line)
+      );
+    });
     return result(hits.length > 0, hits);
   },
 
   "diff.earlyReturnToTernary": (snapshot) => {
+    if (!enabled(snapshot)) return result(false, []);
     const hits = matchAdded(snapshot, (line) =>
       /^\+\s*const \w+ = .+&&.+ \? .+ :/.test(line) ||
       /^\+\s*const \w+ = .+\? .+ : \[\]/.test(line) ||
@@ -30,21 +78,20 @@ export const atoms = {
     return result(hits.length > 0, hits);
   },
 
-  "diff.moduleConstCamel": (snapshot) => {
+  "diff.moduleConstCase": (snapshot) => {
+    if (!enabled(snapshot)) return result(false, []);
+    const mode = snapshot.policy.changeDiscipline.moduleConstCase;
+    if (mode === "off" || !mode) return result(false, []);
     const hits = matchAdded(snapshot, (line) => {
-      const m = line.match(
-        /^\+\s*(?:export\s+)?const ([a-z][a-zA-Z0-9]*) = ([\d"'`]|true|false)/,
-      );
-      if (!m) return false;
-      const name = m[1];
-      if (name.startsWith("use") || name.endsWith("Ref")) return false;
-      return !/^(default|async)$/.test(name);
+      if (mode === "screaming-snake") {
+        const name = moduleConstName(line, CAMEL_CONST);
+        if (!name) return false;
+        if (name.startsWith("use") || name.endsWith("Ref")) return false;
+        return !/^(default|async)$/.test(name);
+      }
+      const name = moduleConstName(line, SNAKE_CONST);
+      return Boolean(name && name.includes("_"));
     });
-    return result(hits.length > 0, hits);
-  },
-
-  "paths.charts": (snapshot) => {
-    const hits = matchPaths(snapshot, /(?:^|\/)components\/charts\/|OptionAnalysisCard/i);
     return result(hits.length > 0, hits);
   },
 
@@ -59,11 +106,21 @@ export const atoms = {
   "claim.unresolved": (snapshot) => {
     const returns = snapshot.task?.returns ?? [];
     const files = snapshot.files ?? {};
+    const steps = snapshot.session?.steps ?? [];
     const hits = [];
     for (const item of returns) {
       if (!item.path) continue;
       const actual = files[item.path];
-      if (!item.sha256 || !actual || actual !== item.sha256) hits.push(item.path);
+      const inSession = steps.some(
+        (step) => evidenceCovers(step.evidence, item.path) && step.sha256 === item.sha256,
+      );
+      if (!item.sha256 || !actual || actual !== item.sha256 || !inSession) hits.push(item.path);
+    }
+    if (snapshot.map?.state === "hit") {
+      const location = snapshot.map.location;
+      if (!location || !steps.some((step) => step.at === location)) {
+        hits.push(location || snapshot.map.entryId || "map");
+      }
     }
     return result(Boolean(snapshot.task) && hits.length > 0, hits);
   },

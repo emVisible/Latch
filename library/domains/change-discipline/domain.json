@@ -1,0 +1,43 @@
+{
+  "name": "change-discipline",
+  "description": "改动前先读仓库规则，再过四条断言和一个风格判断槽",
+  "steps": [
+    {
+      "id": "read-agents",
+      "kind": "read",
+      "paths": ["AGENTS.md"],
+      "emit": true
+    },
+    {
+      "id": "no-new-useeffect",
+      "kind": "assert",
+      "atom": "diff.useEffect",
+      "expect": false
+    },
+    {
+      "id": "no-tab-keepalive",
+      "kind": "assert",
+      "atom": "diff.tabKeepalive",
+      "expect": false
+    },
+    {
+      "id": "no-early-return-to-ternary",
+      "kind": "assert",
+      "atom": "diff.earlyReturnToTernary",
+      "expect": false
+    },
+    {
+      "id": "module-const-case",
+      "kind": "assert",
+      "atom": "diff.moduleConstCase",
+      "expect": false
+    },
+    {
+      "id": "style-drift",
+      "kind": "slot",
+      "question": "新代码的命名和控制流是否和所在文件一致，且没有把已符合规范的写法改差？",
+      "answer": "pass-fail",
+      "onFail": "stop"
+    }
+  ]
+}

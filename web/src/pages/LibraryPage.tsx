@@ -1,111 +1,198 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api, type DomainSummary, type MountStatus, type SkillSummary } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { api, type DomainSummary, type MountStatus, type SkillRecord, type SkillSummary } from "../api";
 
-function mountLabel(m: MountStatus): string {
-  if (!m.exists) return "未挂载";
-  if (!m.owned) return "非 Latch 管理 · 拒绝操作";
-  if (!m.discovered) return `${m.mode} · 发现检查失败`;
-  if (m.valid) return `${m.mode} · 与库一致`;
-  return `${m.mode} · 需重新部署`;
+type DomainStepView = {
+  id?: string;
+  kind?: string;
+  atom?: string;
+  expect?: boolean;
+  paths?: string[];
+  question?: string;
+  command?: string | string[];
+  script?: string;
+};
+
+type DomainView = {
+  name: string;
+  description: string;
+  steps: DomainStepView[];
+};
+
+function mountLabel(status: MountStatus): string {
+  if (!status.exists) return "未挂载";
+  if (status.valid) return "与库一致";
+  return "需要重新部署";
+}
+
+function stepText(step: DomainStepView): string {
+  if (step.kind === "read") return `读取 ${(step.paths ?? []).join("、")}`;
+  if (step.kind === "assert") {
+    if (step.atom) return `断言 ${step.atom} ${step.expect === false ? "应为假" : "应为真"}`;
+    return `断言 ${step.script ?? ""}`;
+  }
+  if (step.kind === "slot") return `判断 ${step.question ?? ""}`;
+  if (step.kind === "tool") {
+    const command = Array.isArray(step.command) ? step.command.join(" ") : (step.command ?? "");
+    return `工具 ${command}`;
+  }
+  return step.kind ?? "";
+}
+
+function asDomain(value: unknown): DomainView | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.description !== "string" || !Array.isArray(record.steps)) return null;
+  const steps = record.steps.filter((step): step is DomainStepView => !!step && typeof step === "object");
+  return {
+    name: typeof record.name === "string" ? record.name : "",
+    description: record.description,
+    steps,
+  };
 }
 
 export function LibraryPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
-  const [mountsBySkill, setMountsBySkill] = useState<
-    Record<string, MountStatus[]>
-  >({});
+  const [mountsBySkill, setMountsBySkill] = useState<Record<string, MountStatus[]>>({});
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [skill, setSkill] = useState<SkillRecord | null>(null);
+  const [domain, setDomain] = useState<DomainView | null>(null);
+  const [picked, setPicked] = useState<{ kind: "skill" | "domain"; name: string } | null>(null);
+  const request = useRef(0);
 
   useEffect(() => {
     Promise.all([api.listSkills(), api.listDomains()])
-      .then(async ([s, d]) => {
-        setSkills(s);
-        setDomains(d);
+      .then(async ([nextSkills, nextDomains]) => {
+        setSkills(nextSkills);
+        setDomains(nextDomains);
         const entries = await Promise.all(
-          s.map(async (skill) => {
-            const mounts = await api.getMounts(skill.name);
-            return [skill.name, mounts] as const;
-          }),
+          nextSkills.map(async (item) => [item.name, await api.getMounts(item.name)] as const),
         );
         setMountsBySkill(Object.fromEntries(entries));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"));
   }, []);
 
-  if (error) {
-    return <p className="text-sm text-red-400">{error}</p>;
+  function chooseSkill(name: string) {
+    const id = ++request.current;
+    setPicked({ kind: "skill", name });
+    setDomain(null);
+    setSkill(null);
+    api
+      .getSkill(name)
+      .then((record) => {
+        if (request.current !== id) return;
+        setSkill(record);
+      })
+      .catch((e) => {
+        if (request.current !== id) return;
+        setError(e instanceof Error ? e.message : "加载失败");
+      });
   }
 
-  return (
-    <div className="space-y-10">
-      <section>
-        <h1 className="text-xl font-semibold text-zinc-100">技能</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          正文在 <code className="text-zinc-400">library/skills</code>
-        </p>
-        <ul className="mt-4 divide-y divide-zinc-800/80 border-t border-zinc-800/80">
-          {skills.map((s) => (
-            <li key={s.name} className="py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-zinc-100">{s.name}</p>
-                  <p className="mt-1 text-sm text-zinc-500">{s.description}</p>
-                  {s.issues.length > 0 ? (
-                    <ul className="mt-2 text-xs text-amber-400/90">
-                      {s.issues.map((i) => (
-                        <li key={i}>{i}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <ul className="mt-3 space-y-1 text-xs text-zinc-500">
-                    {(mountsBySkill[s.name] ?? []).map((m) => (
-                      <li key={m.targetId}>
-                        <span className="text-zinc-400">{m.targetId}</span>
-                        {" · "}
-                        {mountLabel(m)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <Link
-                  to={`/edit?skill=${encodeURIComponent(s.name)}`}
-                  className="shrink-0 text-sm text-blue-400 hover:text-blue-300"
-                >
-                  编辑
-                </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+  function chooseDomain(name: string) {
+    const id = ++request.current;
+    setPicked({ kind: "domain", name });
+    setSkill(null);
+    setDomain(null);
+    api
+      .getDomain(name)
+      .then((value) => {
+        if (request.current !== id) return;
+        const view = asDomain(value);
+        if (!view) {
+          setError("读不到这份域");
+          return;
+        }
+        setDomain({ ...view, name: view.name || name });
+      })
+      .catch((e) => {
+        if (request.current !== id) return;
+        setError(e instanceof Error ? e.message : "加载失败");
+      });
+  }
 
-      <section>
-        <h1 className="text-xl font-semibold text-zinc-100">静态域</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          流程在 <code className="text-zinc-400">library/domains</code>，用{" "}
-          <code className="text-zinc-400">latch run</code> 执行
-        </p>
-        <ul className="mt-4 divide-y divide-zinc-800/80 border-t border-zinc-800/80">
-          {domains.map((d) => (
-            <li key={d.name} className="py-4">
-              <div className="flex items-start justify-between gap-4">
+  if (error && skills.length === 0 && domains.length === 0) return <p className="err">{error}</p>;
+
+  return (
+    <div>
+      <p className="kicker">Library</p>
+      <h1>库</h1>
+      <p className="lede">这一页只读。agent 运行 latch next。</p>
+      <div className="stack">
+        {error ? <p className="err">{error}</p> : null}
+        <section>
+          <h2 className="step-label">技能</h2>
+          <ul className="list" style={{ marginTop: 12 }}>
+            {skills.map((item) => (
+              <li key={item.name} className="item">
                 <div>
-                  <p className="font-medium text-zinc-100">{d.name}</p>
-                  <p className="mt-1 text-sm text-zinc-500">{d.description}</p>
+                  <button
+                    type="button"
+                    className="choice"
+                    aria-pressed={picked?.kind === "skill" && picked.name === item.name}
+                    onClick={() => chooseSkill(item.name)}
+                  >
+                    <h2>{item.name}</h2>
+                  </button>
+                  <p>{item.description}</p>
+                  {(mountsBySkill[item.name] ?? []).map((status) => (
+                    <p key={status.targetId}>
+                      <span className={status.valid ? "pill pill-ok" : "pill pill-muted"}>{mountLabel(status)}</span>
+                      <span className="mono"> {status.targetId}</span>
+                    </p>
+                  ))}
+                  {item.issues.map((issue) => (
+                    <p key={issue} className="err">{issue}</p>
+                  ))}
                 </div>
-                <Link
-                  to={`/edit?domain=${encodeURIComponent(d.name)}`}
-                  className="shrink-0 text-sm text-blue-400 hover:text-blue-300"
-                >
-                  编辑
-                </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h2 className="step-label">静态域</h2>
+          <ul className="list" style={{ marginTop: 12 }}>
+            {domains.map((item) => (
+              <li key={item.name} className="item">
+                <div>
+                  <button
+                    type="button"
+                    className="choice"
+                    aria-pressed={picked?.kind === "domain" && picked.name === item.name}
+                    onClick={() => chooseDomain(item.name)}
+                  >
+                    <h2>{item.name}</h2>
+                  </button>
+                  <p>{item.description}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        {skill ? (
+          <section className="panel stack" style={{ marginTop: 0 }}>
+            <h2 className="step-label">{skill.name}</h2>
+            <pre className="log mono" style={{ maxHeight: "none" }}>{skill.raw}</pre>
+          </section>
+        ) : null}
+        {domain ? (
+          <section className="panel stack" style={{ marginTop: 0 }}>
+            <h2 className="step-label">{domain.name}</h2>
+            <p className="step-status">{domain.description}</p>
+            <ol className="list">
+              {domain.steps.map((step, index) => (
+                <li key={step.id ?? index} className="item">
+                  <div>
+                    <h2>{step.id ?? step.kind}</h2>
+                    <p>{stepText(step)}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

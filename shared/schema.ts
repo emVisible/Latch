@@ -204,8 +204,8 @@ export function validateRoute(def: unknown): string[] {
         issues.push(`${p}.to: 必须是对象`);
         return;
       }
-      if (!["run", "ask", "stop"].includes(String(link.to.kind))) {
-        issues.push(`${p}.to.kind: 只支持 run / ask / stop`);
+      if (!["run", "ask", "stop", "goto"].includes(String(link.to.kind))) {
+        issues.push(`${p}.to.kind: 只支持 run / ask / stop / goto`);
       }
       if (link.to.kind === "run" && typeof link.to.domain !== "string") {
         issues.push(`${p}.to.domain: 必填`);
@@ -222,6 +222,50 @@ export function validateRoute(def: unknown): string[] {
     });
   }
   return issues;
+}
+
+export const MODULE_CONST_CASES = ["screaming-snake", "camel", "off"] as const;
+export type ModuleConstCase = (typeof MODULE_CONST_CASES)[number];
+
+export type LatchPolicy = {
+  version: 1;
+  changeDiscipline: {
+    enabled: boolean;
+    moduleConstCase?: ModuleConstCase;
+  };
+};
+
+export function validatePolicy(value: unknown): string[] {
+  if (!isRecord(value)) return ["policy: 必须是对象"];
+  const issues: string[] = [];
+  if (value.version !== 1) issues.push("policy.version: 必须是 1");
+  const discipline = value.changeDiscipline;
+  if (!isRecord(discipline)) {
+    issues.push("policy.changeDiscipline: 必须是对象");
+    return issues;
+  }
+  if (typeof discipline.enabled !== "boolean") {
+    issues.push("policy.changeDiscipline.enabled: 必须是布尔值");
+  }
+  const mode = discipline.moduleConstCase;
+  const known = (MODULE_CONST_CASES as readonly string[]).includes(String(mode));
+  if (mode !== undefined && !known) {
+    issues.push("policy.changeDiscipline.moduleConstCase: 只能是 screaming-snake / camel / off");
+  }
+  if (discipline.enabled === true && !known) {
+    issues.push("policy.changeDiscipline.moduleConstCase: 启用时必填");
+  }
+  return issues;
+}
+
+export function canonicalPolicy(value: LatchPolicy): LatchPolicy {
+  const discipline: LatchPolicy["changeDiscipline"] = {
+    enabled: value.changeDiscipline.enabled,
+  };
+  if (value.changeDiscipline.moduleConstCase) {
+    discipline.moduleConstCase = value.changeDiscipline.moduleConstCase;
+  }
+  return { version: 1, changeDiscipline: discipline };
 }
 
 export function validateSettings(value: unknown): string[] {
@@ -243,6 +287,11 @@ export function validateSettings(value: unknown): string[] {
       issues.push(`targets[${i}].path: 必须是绝对路径`);
     }
   });
+  if ("current" in value && value.current !== undefined) {
+    if (typeof value.current !== "string" || !value.current.startsWith("/")) {
+      issues.push("settings.current: 必须是绝对路径");
+    }
+  }
   return issues;
 }
 
@@ -333,7 +382,13 @@ export type ExamQuestion = {
   role: "routine" | "trap";
   expect: boolean;
   source: { path: string; sha256: string };
-  fixture: { added: string[]; removed: string[]; changedPaths: string[] };
+  naive?: { path: string; sha256: string };
+  fixture: {
+    added: string[];
+    removed: string[];
+    changedPaths: string[];
+    policy?: LatchPolicy;
+  };
 };
 
 export type ExamDocument = { questions: ExamQuestion[] };
@@ -343,6 +398,7 @@ function fixtureKey(fixture: ExamQuestion["fixture"]): string {
     added: fixture.added,
     removed: fixture.removed,
     changedPaths: [...fixture.changedPaths].sort(),
+    policy: fixture.policy ? canonicalPolicy(fixture.policy) : null,
   });
 }
 
@@ -383,7 +439,41 @@ export function validateExam(card: { naiveExpect?: boolean }, value: unknown): s
       issues.push(`${p}.fixture: 需要 added / removed / changedPaths 字符串数组`);
       return;
     }
-    questions.push(raw as ExamQuestion);
+    let policy: LatchPolicy | undefined;
+    if (raw.fixture.policy !== undefined) {
+      const policyIssues = validatePolicy(raw.fixture.policy);
+      if (policyIssues.length) {
+        issues.push(...policyIssues.map((item) => `${p}.fixture.${item}`));
+        return;
+      }
+      policy = canonicalPolicy(raw.fixture.policy as LatchPolicy);
+    }
+    let naive: ExamQuestion["naive"];
+    if (raw.role === "trap") {
+      if (
+        !isRecord(raw.naive) ||
+        typeof raw.naive.path !== "string" ||
+        !raw.naive.path.trim() ||
+        typeof raw.naive.sha256 !== "string" ||
+        !SHA256_RE.test(raw.naive.sha256)
+      ) {
+        issues.push(`${p}.naive: 陷阱题需要已记录的 { path, sha256 }`);
+        return;
+      }
+      naive = { path: raw.naive.path, sha256: raw.naive.sha256 };
+    }
+    questions.push({
+      role: raw.role as ExamQuestion["role"],
+      expect: raw.expect as boolean,
+      source: raw.source as ExamQuestion["source"],
+      ...(naive ? { naive } : {}),
+      fixture: {
+        added: raw.fixture.added as string[],
+        removed: raw.fixture.removed as string[],
+        changedPaths: raw.fixture.changedPaths as string[],
+        ...(policy ? { policy } : {}),
+      },
+    });
   });
   const routines = questions.filter((q) => q.role === "routine").length;
   const traps = questions.filter((q) => q.role === "trap").length;
@@ -392,10 +482,6 @@ export function validateExam(card: { naiveExpect?: boolean }, value: unknown): s
   }
   if (questions.length === 3 && new Set(questions.map((q) => fixtureKey(q.fixture))).size !== 3) {
     issues.push("exam: 三份夹具必须两两不同");
-  }
-  const trap = questions.find((q) => q.role === "trap");
-  if (trap && typeof card.naiveExpect === "boolean" && trap.expect === card.naiveExpect) {
-    issues.push("exam: 陷阱题的期望必须不同于 naiveExpect");
   }
   return issues;
 }
@@ -406,8 +492,8 @@ export function validateMap(value: unknown): string[] {
   if (typeof value.name !== "string" || !NAME_RE.test(value.name)) {
     issues.push("map.name: 非法名称");
   }
-  if (!Array.isArray(value.entries) || value.entries.length === 0) {
-    issues.push("map.entries: 需要非空数组");
+  if (!Array.isArray(value.entries)) {
+    issues.push("map.entries: 需要数组");
     return issues;
   }
   const ids = new Set<string>();

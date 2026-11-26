@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { cardProblems, examCard, promoteCard, routesReferencingAtom } from "../shared/card.js";
+import { atomReachableOnDaily, cardProblems, examCard, noteSightings, promoteCard } from "../shared/card.js";
+import { captureNaive } from "../shared/naive.js";
 import { readMap, resolveMap, writeResolution } from "../shared/map.js";
 import { acquireLease } from "../shared/lease.js";
 import { readJournal } from "../shared/journal.js";
@@ -11,7 +12,7 @@ import { CARDS_DIR, repoLatch } from "../shared/paths.js";
 import { answerSlot, checkRoute, runRoute } from "../shared/routeRunner.js";
 import { runStepList } from "../shared/runner.js";
 import { collectSnapshot, writeTaskFile } from "../shared/snapshot.js";
-import { cleanup, makeRepo } from "./helpers.js";
+import { cleanup, coverSession, makeRepo, writePolicy } from "./helpers.js";
 
 const PANEL = "export const panel = 1;\n";
 const PANEL_SHA = "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5";
@@ -85,6 +86,7 @@ test("task route rejects an unsourced return, a bad hash, and an undeclared writ
       writable: ["shot.txt"],
       returns: [{ fact: "hello", path: "shot.txt", sha256: sha }],
     });
+    await coverSession(repo, "shot.txt", "shot.txt");
     const clean = await runRoute("task", repo, { window: "worktree" });
     assert.equal(clean.exitCode, 0, clean.log.join("\n"));
     assert.equal(clean.linkId, "clean");
@@ -107,6 +109,7 @@ test("evidence window resolves a file hash and ignores the evidence path as a wr
       writable: [],
       returns: [{ fact: "有一帧", path: "shot.txt", sha256: sha }],
     });
+    await coverSession(repo, "evidence", "evidence/shot.txt");
     const ok = await runRoute("task", repo, { window: `evidence:${dir}` });
     assert.equal(ok.exitCode, 0, ok.log.join("\n"));
     const snap = await collectSnapshot(repo, `evidence:${dir}`);
@@ -184,15 +187,18 @@ test("task, desk, daily, and card-gate routes compile", async () => {
   assert.equal(desk.report.stages.entry.feasible, 4);
   const daily = await checkRoute("daily");
   assert.equal(daily.report.ok, true, daily.report.issues.map((i) => i.message).join("\n"));
-  assert.equal(daily.report.stages.entry.feasible, 9);
-  assert.equal(daily.report.stages.map.feasible, 8);
+    assert.equal(daily.report.stages.entry.feasible, 9);
+    assert.equal(daily.report.stages.discipline.feasible, 38);
+    assert.equal(daily.report.stages["after-discipline"].feasible, 6);
+    assert.equal(daily.report.stages.map.feasible, 8);
   const gate = await checkRoute("card-gate");
   assert.equal(gate.report.ok, true, gate.report.issues.map((i) => i.message).join("\n"));
 });
 
 async function breach(repo: string, file: string): Promise<void> {
+  await writePolicy(repo);
   await fs.writeFile(path.join(repo, file), "const x = useEffect(() => {});\n");
-  const result = await runRoute("openstrat", repo, { window: "worktree" });
+  const result = await runRoute("change-discipline", repo, { window: "worktree" });
   assert.equal(result.exitCode, 1, result.log.join("\n"));
 }
 
@@ -202,6 +208,7 @@ test("daily runs the contract before the map", async () => {
     const absent = await runRoute("daily", repo, { window: "worktree" });
     assert.equal(absent.exitCode, 1);
     assert.equal(absent.linkId, "absent");
+    assert.ok(absent.log.some((line) => line.includes("task open")));
 
     await writeTaskFile(repo, {
       intent: "看笔记",
@@ -221,6 +228,7 @@ test("daily runs the contract before the map", async () => {
       entryId: "notes",
       entryIds: ["notes"],
     });
+    await coverSession(repo, "NOTES.md", "NOTES.md");
     const done = await runRoute("daily", repo, { window: "worktree" });
     assert.equal(done.exitCode, 0, done.log.join("\n"));
     assert.equal(done.linkId, "done");
@@ -243,6 +251,8 @@ test("exam counts distinct snapshots, then requires a read receipt", async () =>
     assert.match(unread.message, /读回执/);
 
     await readPanel(repo);
+    await captureNaive(repo, "diff-use-effect", "src/panel.tsx");
+    await captureNaive(repo, "naive-use-effect", "src/panel.tsx");
     const passed = await examCard("diff-use-effect", repo);
     assert.equal(passed.exitCode, 0, passed.message);
     const still = JSON.parse(
@@ -258,11 +268,32 @@ test("exam counts distinct snapshots, then requires a read receipt", async () =>
   }
 });
 
+test("the other discipline cards pass their exams once sighted", async () => {
+  const repo = await makeRepo();
+  try {
+    await readPanel(repo);
+    for (const name of ["diff-tab-keepalive", "diff-early-return", "diff-module-const"]) {
+      await captureNaive(repo, name, "src/panel.tsx");
+    }
+    for (const atom of ["diff.tabKeepalive", "diff.earlyReturnToTernary", "diff.moduleConstCase"]) {
+      await noteSightings(repo, { [atom]: true }, `${atom}-1`);
+      await noteSightings(repo, { [atom]: true }, `${atom}-2`);
+    }
+    for (const name of ["diff-tab-keepalive", "diff-early-return", "diff-module-const"]) {
+      const result = await examCard(name, repo);
+      assert.equal(result.exitCode, 0, result.message);
+    }
+  } finally {
+    await cleanup(repo);
+  }
+});
+
 test("once and an unbound slot cannot latch; a bound slot can, until the snapshot moves", async () => {
   const repo = await makeRepo();
   const root = await fs.mkdtemp(path.join(repo, "cards-"));
   try {
     await readPanel(repo);
+    await captureNaive(repo, "diff-use-effect", "src/panel.tsx");
     await copyCard("diff-use-effect", root);
     const cardPath = path.join(root, "diff-use-effect", "card.json");
     const once = JSON.parse(await fs.readFile(cardPath, "utf8"));
@@ -288,7 +319,7 @@ test("once and an unbound slot cannot latch; a bound slot can, until the snapsho
     assert.equal(slotted.exitCode, 0, slotted.message);
     const latched = JSON.parse(await fs.readFile(cardPath, "utf8"));
     assert.equal(latched.status, "latched");
-    assert.ok((await routesReferencingAtom("diff.useEffect")).includes("openstrat"));
+    assert.ok(await atomReachableOnDaily("diff.useEffect"));
 
     latched.status = "candidate";
     await fs.writeFile(cardPath, JSON.stringify(latched));
@@ -300,7 +331,7 @@ test("once and an unbound slot cannot latch; a bound slot can, until the snapsho
     const fake = { ...latched, atom: "not-in-a-route", status: "latched" };
     await fs.writeFile(cardPath, JSON.stringify(fake));
     const problems = await cardProblems("diff-use-effect", root);
-    assert.ok(problems.some((item) => item.includes("不在任何路由")));
+    assert.ok(problems.some((item) => item.includes("不在 daily")));
   } finally {
     await cleanup(repo);
   }
@@ -314,7 +345,9 @@ test("a dead lease is recovered and a live lease blocks the second route", async
       repoLatch(repo, "lease.json"),
       JSON.stringify({ pid: 2147483646, snapshotHash: "", acquiredAt: "t" }),
     );
-    const recovered = await runRoute("openstrat", repo, { window: "worktree" });
+    await writePolicy(repo);
+    await fs.writeFile(path.join(repo, "note.ts"), "// note\n");
+    const recovered = await runRoute("change-discipline", repo, { window: "worktree" });
     assert.equal(recovered.exitCode, 5, recovered.log.join("\n"));
     assert.ok(!recovered.log.some((line) => line.includes("租约")));
 

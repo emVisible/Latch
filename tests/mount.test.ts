@@ -11,7 +11,7 @@ import {
 import { SKILLS_DIR } from "../shared/paths.js";
 import { cleanup, makeRepo } from "./helpers.js";
 
-const SKILL = "openstrat-change-discipline";
+const SKILL = "hard-lock";
 
 function target(repo: string) {
   return {

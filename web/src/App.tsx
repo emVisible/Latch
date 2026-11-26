@@ -1,44 +1,34 @@
-import { Link, Route, Routes } from "react-router-dom";
-import { DeployPage } from "./pages/DeployPage";
-import { EditPage } from "./pages/EditPage";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { LibraryPage } from "./pages/LibraryPage";
-import { RoutePage } from "./pages/RoutePage";
 
 export default function App() {
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-zinc-800/80 px-5 py-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3">
-            <img
-              src="/icon.jpg"
-              alt=""
-              className="h-8 w-8 rounded-full object-cover"
-            />
-            <span className="text-lg font-medium tracking-tight">Latch</span>
-          </Link>
-          <nav className="flex gap-5 text-sm text-zinc-400">
-            <Link to="/" className="hover:text-zinc-100">
-              库
-            </Link>
-            <Link to="/routes" className="hover:text-zinc-100">
-              链路
-            </Link>
-            <Link to="/edit" className="hover:text-zinc-100">
-              编辑
-            </Link>
-            <Link to="/deploy" className="hover:text-zinc-100">
-              部署
-            </Link>
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl px-5 py-8">
+    <div className="shell">
+      <aside className="side">
+        <NavLink to="/library" className="brand">
+          <img src="/icon.jpg" alt="" />
+          <span>
+            <strong>Latch</strong>
+            <small>库</small>
+          </span>
+        </NavLink>
+        <nav className="nav">
+          <NavLink
+            to="/library"
+            end
+            className={({ isActive }) => (isActive ? "active" : undefined)}
+          >
+            库
+          </NavLink>
+        </nav>
+      </aside>
+      <main className="page">
         <Routes>
-          <Route path="/" element={<LibraryPage />} />
-          <Route path="/routes" element={<RoutePage />} />
-          <Route path="/edit" element={<EditPage />} />
-          <Route path="/deploy" element={<DeployPage />} />
+          <Route path="/library" element={<LibraryPage />} />
+          <Route path="/" element={<Navigate to="/library" replace />} />
+          <Route path="/routes" element={<Navigate to="/library" replace />} />
+          <Route path="/deploy" element={<Navigate to="/library" replace />} />
+          <Route path="/edit" element={<Navigate to="/library" replace />} />
         </Routes>
       </main>
     </div>

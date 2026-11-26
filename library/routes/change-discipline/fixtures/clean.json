@@ -1,0 +1,12 @@
+{
+  "added": ["+// note"],
+  "removed": [],
+  "changedPaths": ["src/note.ts"],
+  "policy": {
+    "version": 1,
+    "changeDiscipline": {
+      "enabled": true,
+      "moduleConstCase": "screaming-snake"
+    }
+  }
+}

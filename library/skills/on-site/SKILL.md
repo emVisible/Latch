@@ -1,22 +1,38 @@
 ---
 name: on-site
 description: >-
-  Open the real app or repo, keep a sourced record of every step, and refuse
-  unsourced numbers or edits outside the writable list. Use when a task needs
-  a click-through, a screenshot, or a returned fact.
+  Accept a returned fact only when a session step sits on the feature-map
+  location and Latch hashed the evidence file. Use when a task needs a
+  click-through, a screenshot, or a sourced number.
 ---
 
 # 走到现场
 
-自己打开 App 或仓库，自己点到要看的位置。不要把点击交回给用户。
+证明要沿用户看得见的路径走完。只截一张已经打开的屏幕，不算证明。
 
-每一步留下可核对的文件：截屏、导出，或带 sha256 的路径。没有这份文件，就没有这一步的结果。不编造数字。每条回传都要有 `path` 和 sha256。
+功能条目在 `.latch/map.json`（代码，不是 wiki）里：`id`，`aliases`，`location`，`observe`，`steps`。模糊说法只按别名做子串包含。全图恰好一条才算命中。未命中或歧义时不要猜位置。匹配细则在 `function-map`。
 
-`writable` 为空就不改任何路径。要改的路径写进任务单，别的不动。证据放在一个目录里，任务单的 `durability` 用入口已经判定的那一个。
+## Sub-features
+
+- 任务没有回传事实：这一关放过。
+- 回传事实对上地图 `location`，且证据哈希是 Latch 读盘算出来的：通过。
+- 对不上这个位置，或哈希不是这次会话步骤算的：停下。
+
+## How to get to it (user POV)
+
+先得到唯一命中的 `location`。用户从那里进入，做到 `observe` 要求看得见的结果。打开页面就停住，证据里没有那个结果，就不算走到现场。
+
+## Driving it with the harness
 
 ```bash
-latch task open --cwd <repo> --intent "<这一轮要看的>" --durability <once|lasting> --fact "<事实>" --source <path> --sha256 <hex> --writable <path>
-latch task check --cwd <repo> --window evidence:<dir>
+latch session open --cwd <repo> --target <app>
+latch session step --cwd <repo> --at <地图 location> --evidence <文件>
 ```
 
-退出码不是 0 就停，先看 `.latch/last-route.json`。
+`latch session step` 读证据文件并写入 sha256。回传事实的 `path` 必须被这一步的证据盖住，且这一步的 `--at` 就是地图上的 `location`。
+
+`latch bot next` 是硬门。回传事实没有同时绑上功能地图位置和 Latch 算出的会话证据哈希时，退出码 1。没有回传事实，或这两样都在，这一关才可以退出码 0。
+
+## Gotchas
+
+写在任务 `returns[].sha256` 上的哈希不算，哪怕它和文件内容一致。证据文件在步骤写入后又被改过，快照会拒绝这份会话。`writable` 为空就不改任何代码路径。不编造数字。

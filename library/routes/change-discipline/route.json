@@ -1,0 +1,163 @@
+{
+  "name": "change-discipline",
+  "version": 1,
+  "policy": "unique",
+  "maxRounds": 4,
+  "routingAtoms": [
+    "policy.active",
+    "changes.present",
+    "diff.useEffect",
+    "diff.tabKeepalive",
+    "diff.earlyReturnToTernary",
+    "diff.moduleConstCase"
+  ],
+  "resultAtoms": {
+    "run.discipline.ok": {
+      "from": "domain",
+      "domain": "change-discipline",
+      "field": "ok"
+    },
+    "slot.answered": {
+      "from": "slot",
+      "slot": "style-drift",
+      "field": "answered"
+    },
+    "slot.pass": {
+      "from": "slot",
+      "slot": "style-drift",
+      "field": "pass"
+    }
+  },
+  "constraints": [
+    "diff.useEffect => policy.active",
+    "diff.tabKeepalive => policy.active",
+    "diff.earlyReturnToTernary => policy.active",
+    "diff.moduleConstCase => policy.active",
+    "diff.useEffect => changes.present",
+    "diff.tabKeepalive => changes.present",
+    "diff.earlyReturnToTernary => changes.present",
+    "diff.moduleConstCase => changes.present",
+    "slot.pass => slot.answered"
+  ],
+  "molecules": {
+    "disciplineBreach": {
+      "any": [
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ]
+    }
+  },
+  "stages": {
+    "entry": {
+      "scope": [
+        "policy.active",
+        "changes.present",
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ],
+      "links": [
+        {
+          "id": "inactive",
+          "when": { "not": "policy.active" },
+          "to": {
+            "kind": "stop",
+            "exit": 1,
+            "reason": "改动纪律未配置或未启用"
+          }
+        },
+        {
+          "id": "no-changes",
+          "when": {
+            "all": ["policy.active", { "not": "changes.present" }]
+          },
+          "to": {
+            "kind": "stop",
+            "exit": 0,
+            "reason": "没有改动"
+          }
+        },
+        {
+          "id": "stop-discipline",
+          "when": {
+            "all": ["policy.active", "changes.present", "disciplineBreach"]
+          },
+          "to": {
+            "kind": "stop",
+            "exit": 1,
+            "reason": "diff 违反改动纪律"
+          }
+        },
+        {
+          "id": "check",
+          "when": {
+            "all": [
+              "policy.active",
+              "changes.present",
+              { "not": "disciplineBreach" }
+            ]
+          },
+          "to": {
+            "kind": "run",
+            "domain": "change-discipline",
+            "then": "after-discipline"
+          }
+        }
+      ]
+    },
+    "after-discipline": {
+      "scope": ["run.discipline.ok", "slot.answered", "slot.pass"],
+      "links": [
+        {
+          "id": "discipline-failed",
+          "when": { "not": "run.discipline.ok" },
+          "to": {
+            "kind": "stop",
+            "exit": 1,
+            "reason": "纪律域未通过"
+          }
+        },
+        {
+          "id": "slot-pending",
+          "when": {
+            "all": ["run.discipline.ok", { "not": "slot.answered" }]
+          },
+          "to": {
+            "kind": "ask",
+            "slot": "style-drift",
+            "then": "after-discipline"
+          }
+        },
+        {
+          "id": "slot-failed",
+          "when": {
+            "all": [
+              "run.discipline.ok",
+              "slot.answered",
+              { "not": "slot.pass" }
+            ]
+          },
+          "to": {
+            "kind": "stop",
+            "exit": 1,
+            "reason": "style-drift 判定为 fail"
+          }
+        },
+        {
+          "id": "done",
+          "when": {
+            "all": ["run.discipline.ok", "slot.answered", "slot.pass"]
+          },
+          "to": {
+            "kind": "stop",
+            "exit": 0,
+            "reason": "route 完成"
+          }
+        }
+      ]
+    }
+  }
+}

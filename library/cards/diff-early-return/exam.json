@@ -1,0 +1,47 @@
+{
+  "questions": [
+    {
+      "role": "routine",
+      "expect": true,
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  return ready ? value : null;"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    },
+    {
+      "role": "routine",
+      "expect": false,
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  return null;"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    },
+    {
+      "role": "trap",
+      "expect": false,
+      "naive": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "source": {
+        "path": "src/panel.tsx",
+        "sha256": "62a62c8a3952f92dfb70c5566330d1d1871e5428599e35d01fe09be8dd4613b5"
+      },
+      "fixture": {
+        "added": ["+  const label = title ? name : \"\";"],
+        "removed": [],
+        "changedPaths": ["src/panel.tsx"]
+      }
+    }
+  ]
+}

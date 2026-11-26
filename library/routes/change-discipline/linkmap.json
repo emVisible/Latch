@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "route": "change-discipline",
+  "generatedAt": "2026-11-24T03:41:10.894Z",
+  "routeHash": "e7c4bc4c5ba44adb",
+  "atomsHash": "4d0e2201c552d618",
+  "policy": "unique",
+  "stages": {
+    "entry": {
+      "scope": [
+        "policy.active",
+        "changes.present",
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ],
+      "feasible": 19,
+      "links": [
+        {
+          "id": "inactive",
+          "satisfying": 2,
+          "minimalAssignment": {
+            "policy.active": false,
+            "changes.present": false,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "no-changes",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "policy.active": true,
+            "changes.present": false,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "stop-discipline",
+          "satisfying": 15,
+          "minimalAssignment": {
+            "policy.active": true,
+            "changes.present": true,
+            "diff.useEffect": true,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "check",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "policy.active": true,
+            "changes.present": true,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        }
+      ]
+    },
+    "after-discipline": {
+      "scope": [
+        "run.discipline.ok",
+        "slot.answered",
+        "slot.pass"
+      ],
+      "feasible": 6,
+      "links": [
+        {
+          "id": "discipline-failed",
+          "satisfying": 3,
+          "minimalAssignment": {
+            "run.discipline.ok": false,
+            "slot.answered": false,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "slot-pending",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": false,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "slot-failed",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": true,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "done",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": true,
+            "slot.pass": true
+          }
+        }
+      ]
+    }
+  },
+  "issueCount": 0
+}

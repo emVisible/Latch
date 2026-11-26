@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit"
   },
   "bin": {
-    "latch": "./cli/run.ts"
+    "latch": "./bin/latch"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.4",

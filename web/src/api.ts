@@ -37,6 +37,19 @@ export type SkillRecord = SkillSummary & {
 
 export type DomainSummary = { name: string; description: string };
 
+export type LoopView = {
+  cwd: string;
+  task: { intent: string; durability: string } | null;
+  session: { target: string; steps: { at: string; evidence: string; sha256: string }[] } | null;
+  sessionError: string | null;
+  map: { state: string; entryId: string | null; location: string | null; query: string } | null;
+  cards: { name: string; status: string; atom: string; onDaily: boolean }[];
+  lease: { pid: number; session: string; alive: boolean } | null;
+  mapApp: string;
+  nextKind: "task" | "session-end" | "map" | "session-open" | "session-step" | "daily";
+  next: string;
+};
+
 export type MountTarget = {
   id: string;
   label: string;
@@ -124,6 +137,38 @@ export const api = {
     request<{ targets: MountTarget[] }>("/api/settings/targets").then(
       (r) => r.targets,
     ),
+  loop: (cwd: string) =>
+    request<LoopView>(`/api/loop?cwd=${encodeURIComponent(cwd)}`),
+  openTask: (cwd: string, intent: string, durability: string, writable: string) =>
+    request<LoopView>("/api/loop/task", {
+      method: "POST",
+      ...jsonBody({ cwd, intent, durability, writable }),
+    }),
+  sessionAct: (
+    cwd: string,
+    action: "open" | "step" | "end",
+    extra: { target?: string; at?: string; evidence?: string } = {},
+  ) =>
+    request<LoopView>("/api/loop/session", {
+      method: "POST",
+      ...jsonBody({ cwd, action, ...extra }),
+    }),
+  resolveMap: (cwd: string, app: string, query: string) =>
+    request<LoopView>("/api/loop/map", {
+      method: "POST",
+      ...jsonBody({ cwd, app, query }),
+    }),
+  initRepo: (repoPath: string, moduleConstCase: string) =>
+    request<{
+      root: string;
+      target: MountTarget;
+      wrotePolicy: boolean;
+      wroteAgents: boolean;
+      lines: string[];
+    }>("/api/init", {
+      method: "POST",
+      ...jsonBody({ path: repoPath, moduleConstCase }),
+    }),
   getMounts: (skillName: string) =>
     request<{ mounts: MountStatus[] }>(`/api/mounts/${skillName}`).then(
       (r) => r.mounts,
@@ -138,10 +183,10 @@ export const api = {
       method: "DELETE",
       ...jsonBody({ skillName, targetIds }),
     }),
-  installRule: (domainName: string, targetId: string) =>
+  installRule: (domainName: string, targetId: string, route: string) =>
     request<{ path: string }>(`/api/domains/${domainName}/install-rule`, {
       method: "POST",
-      ...jsonBody({ targetId }),
+      ...jsonBody({ targetId, route }),
     }),
 
   listRoutes: () =>

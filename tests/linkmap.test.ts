@@ -159,11 +159,11 @@ test("constraints remove impossible assignments", () => {
   assert.equal(report.ok, true);
 });
 
-test("the shipped openstrat route passes all seven checks", async () => {
-  const route = await readRoute("openstrat");
-  const { report } = await checkRoute("openstrat");
+test("the shipped change-discipline route passes all seven checks", async () => {
+  const route = await readRoute("change-discipline");
+  const { report } = await checkRoute("change-discipline");
   assert.equal(report.ok, true, JSON.stringify(report.issues));
-  assert.equal(report.stages.entry.feasible, 32);
+  assert.equal(report.stages.entry.feasible, 19);
   assert.equal(report.stages["after-discipline"].feasible, 6);
   assert.equal(Object.keys(route.stages).length, 2);
 });

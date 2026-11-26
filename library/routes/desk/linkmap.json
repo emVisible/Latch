@@ -1,9 +1,9 @@
 {
   "version": 1,
   "route": "desk",
-  "generatedAt": "2026-11-23T07:53:55.323Z",
+  "generatedAt": "2026-11-24T03:37:52.270Z",
   "routeHash": "348830de0915c0a1",
-  "atomsHash": "d029047e307a521d",
+  "atomsHash": "4d0e2201c552d618",
   "policy": "unique",
   "stages": {
     "entry": {

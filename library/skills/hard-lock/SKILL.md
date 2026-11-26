@@ -1,19 +1,19 @@
 ---
 name: hard-lock
 description: >-
-  Run the daily route and stop when its exit code is not zero. Use when more
-  than one person or agent can touch the same repo, or when a verbal promise
-  is being offered instead of a gate.
+  Hold a session lease so a second agent cannot write the same repo. Use when
+  more than one agent can touch the repo, or a verbal promise is being offered
+  instead of a gate.
 ---
 
 # 硬锁
 
-不用「请不要改」当锁。日常任务的入口命令是：
+不用「请不要改」当锁。hook 会给这次会话一个编号，写进 `.latch/hook-session`，租约一直留到：
 
 ```bash
-latch route daily --cwd <repo> --window evidence:<dir>
+latch session end --cwd <repo>
 ```
 
-退出码不是 0 就停，先看 `.latch/last-route.json`。上一阶段没过，下一阶段只有停。
+会话没结束时，第二个 agent 跑 `latch route` 会退出码 1。进程已经死掉的租约可以回收。不带会话号的调试命令在命令结束时放锁。
 
-同一 git 根上同时只能有一个 `latch route`，锁文件是 `.latch/lease.json`。从子目录启动也锁在这个根上。人审留在考卷和不可逆动作。
+日常入口仍是 `latch route daily --cwd <repo>`。退出码不是 0 就停。

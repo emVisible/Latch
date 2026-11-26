@@ -39,8 +39,14 @@ function script(
 LATCH_ROOT=${shellJson(LATCH_ROOT)}
 ROUTE=${shellJson(routeName)}
 REPO="\${CURSOR_PROJECT_DIR:-\${CLAUDE_PROJECT_DIR:-\$(pwd)}}"
+mkdir -p "$REPO/.latch"
+SESS_FILE="$REPO/.latch/hook-session"
+if [ ! -s "$SESS_FILE" ]; then
+  od -An -N16 -tx1 /dev/urandom | tr -d ' \\n' > "$SESS_FILE"
+fi
+SESS=$(cat "$SESS_FILE")
 cd "$LATCH_ROOT" || { printf '%s\\n' '${deny}'; exit 2; }
-node --import tsx ./cli/run.ts route "$ROUTE" --cwd "$REPO" --window ${shellJson(window)} >/dev/null 2>&1
+node --import tsx ./cli/run.ts route "$ROUTE" --cwd "$REPO" --window ${shellJson(window)} --session "$SESS" >/dev/null 2>&1
 code=$?
 `;
   if (mode === "git") {

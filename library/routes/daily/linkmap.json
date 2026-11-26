@@ -1,9 +1,9 @@
 {
   "version": 1,
   "route": "daily",
-  "generatedAt": "2026-11-23T08:27:30.245Z",
-  "routeHash": "ed767eda6263b3ac",
-  "atomsHash": "d029047e307a521d",
+  "generatedAt": "2026-11-24T03:41:11.352Z",
+  "routeHash": "e6bfa7921335e467",
+  "atomsHash": "4d0e2201c552d618",
   "policy": "unique",
   "stages": {
     "entry": {
@@ -43,6 +43,131 @@
             "claim.unsourced": false,
             "claim.unresolved": false,
             "write.undeclared": false
+          }
+        }
+      ]
+    },
+    "discipline": {
+      "scope": [
+        "run.contract.ok",
+        "policy.active",
+        "changes.present",
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ],
+      "feasible": 38,
+      "links": [
+        {
+          "id": "contract-failed",
+          "satisfying": 19,
+          "minimalAssignment": {
+            "run.contract.ok": false,
+            "policy.active": false,
+            "changes.present": false,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "skip-inactive",
+          "satisfying": 2,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "policy.active": false,
+            "changes.present": false,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "skip-clean",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "policy.active": true,
+            "changes.present": false,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "stop-discipline",
+          "satisfying": 15,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "policy.active": true,
+            "changes.present": true,
+            "diff.useEffect": true,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        },
+        {
+          "id": "check",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.contract.ok": true,
+            "policy.active": true,
+            "changes.present": true,
+            "diff.useEffect": false,
+            "diff.tabKeepalive": false,
+            "diff.earlyReturnToTernary": false,
+            "diff.moduleConstCase": false
+          }
+        }
+      ]
+    },
+    "after-discipline": {
+      "scope": [
+        "run.discipline.ok",
+        "slot.answered",
+        "slot.pass"
+      ],
+      "feasible": 6,
+      "links": [
+        {
+          "id": "discipline-failed",
+          "satisfying": 3,
+          "minimalAssignment": {
+            "run.discipline.ok": false,
+            "slot.answered": false,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "slot-pending",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": false,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "slot-failed",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": true,
+            "slot.pass": false
+          }
+        },
+        {
+          "id": "continue",
+          "satisfying": 1,
+          "minimalAssignment": {
+            "run.discipline.ok": true,
+            "slot.answered": true,
+            "slot.pass": true
           }
         }
       ]

@@ -1,0 +1,9 @@
+{
+  "name": "diff-tab-keepalive",
+  "atom": "diff.tabKeepalive",
+  "durability": "lasting",
+  "seen": 0,
+  "lock": "assert",
+  "naiveExpect": true,
+  "status": "candidate"
+}

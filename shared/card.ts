@@ -7,15 +7,24 @@ import { hashRoute } from "./linkmap.js";
 import { CARDS_DIR, cardDir, repoLatch } from "./paths.js";
 import { listRoutes, readRoute, type RouteDefinition } from "./route.js";
 import {
+  canonicalPolicy,
   validateCard,
   validateExam,
   type CardDocument,
   type ExamDocument,
+  type LatchPolicy,
 } from "./schema.js";
 import { parseSkillMarkdown, validateSkill } from "./skill.js";
+import { authoringSplitIssue } from "./examSplit.js";
+import { readNaive } from "./naive.js";
 import { collectSnapshot, snapshotFromFixture } from "./snapshot.js";
 
 export type GradeResult = { ok: boolean; issues: string[] };
+
+const EXAM_POLICY: LatchPolicy = {
+  version: 1,
+  changeDiscipline: { enabled: true, moduleConstCase: "screaming-snake" },
+};
 
 export async function listCards(root: string = CARDS_DIR): Promise<string[]> {
   try {
@@ -79,13 +88,31 @@ export async function gradeExam(
     } catch {
       issues.push(`数据源不存在 ${question.source.path}`);
     }
-    const snapshot = snapshotFromFixture(question.fixture, cwd, "exam");
+    const policy = question.fixture.policy
+      ? canonicalPolicy(question.fixture.policy)
+      : EXAM_POLICY;
+    const snapshot = snapshotFromFixture({ ...question.fixture, policy }, cwd, "exam");
     const outcome = atom(snapshot);
     const value = typeof outcome === "boolean" ? outcome : Boolean(outcome.value);
     if (value !== question.expect) {
       issues.push(
         `${question.role} 期望 ${question.expect}，原子返回 ${value}`,
       );
+    }
+    if (question.role === "trap") {
+      const recorded = await readNaive(cwd, card.name);
+      const naive = question.naive;
+      if (!recorded || !naive || naive.path !== recorded.path || naive.sha256 !== recorded.sha256) {
+        issues.push("陷阱题没有已记录的天真改法");
+      } else {
+        try {
+          const buf = await fs.readFile(path.join(cwd, recorded.path));
+          const actual = crypto.createHash("sha256").update(buf).digest("hex");
+          if (actual !== recorded.sha256) issues.push("天真改法已变");
+        } catch {
+          issues.push("天真改法不存在");
+        }
+      }
     }
   }
   return { ok: issues.length === 0, issues };
@@ -123,8 +150,8 @@ export async function cardProblems(
   if (card.atom && typeof registry.atoms[card.atom] !== "function") {
     issues.push(`原子 ${card.atom} 不在注册表，散文不能单独晋升`);
   }
-  if (card.status === "latched" && (await routesReferencingAtom(card.atom)).length === 0) {
-    issues.push(`原子 ${card.atom} 不在任何路由的 scope 里`);
+  if (card.status === "latched" && !(await atomReachableOnDaily(card.atom))) {
+    issues.push(`原子 ${card.atom} 不在 daily 走得到的 scope 里`);
   }
   return issues;
 }
@@ -187,6 +214,31 @@ export function routeDeclaresSlot(route: RouteDefinition, slotId: string): boole
   return Object.values(route.resultAtoms).some(
     (spec) => spec.from === "slot" && spec.slot === slotId,
   );
+}
+
+export function reachableStageIds(route: RouteDefinition): Set<string> {
+  const seen = new Set<string>(["entry"]);
+  const queue = ["entry"];
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id) break;
+    const stage = route.stages[id];
+    if (!stage) continue;
+    for (const link of stage.links) {
+      if (link.to.kind === "stop" || seen.has(link.to.then)) continue;
+      seen.add(link.to.then);
+      queue.push(link.to.then);
+    }
+  }
+  return seen;
+}
+
+export async function atomReachableOnDaily(atom: string): Promise<boolean> {
+  const route = await readRoute("daily");
+  for (const id of reachableStageIds(route)) {
+    if (route.stages[id]?.scope.includes(atom)) return true;
+  }
+  return false;
 }
 
 export async function routesReferencingAtom(atom: string): Promise<string[]> {
@@ -279,12 +331,13 @@ export async function promoteCard(
 ): Promise<{ exitCode: number; message: string }> {
   const examResult = await examCard(name, cwd, root);
   if (examResult.exitCode !== 0) return examResult;
+  const split = authoringSplitIssue(path.join(cardDir(name, root), "exam.json"));
+  if (split) return { exitCode: 1, message: split };
   const card = await readCard(name, root);
-  const refs = await routesReferencingAtom(card.atom);
-  if (refs.length === 0) {
+  if (!(await atomReachableOnDaily(card.atom))) {
     return {
       exitCode: 1,
-      message: `原子 ${card.atom} 不在任何路由的 scope 里，不能标成 latched`,
+      message: `原子 ${card.atom} 不在 daily 走得到的 scope 里，不能标成 latched`,
     };
   }
   card.status = "latched";

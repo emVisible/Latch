@@ -1,7 +1,7 @@
 # Latch v1 调研：原子状况、条件分支、域的导向
 
 日期：2026-11-04  
-地位：**已被 [v1-research-plan.md](v1-research-plan.md) 取代**（2026-11-04 复审）。本文保留为设计草稿；新文档修正了入口强制（hook 分层）、事实采集（快照与未跟踪文件）、状态变更（分阶段状态机 + 追加式 journal）与编译校验（七项体检）四部分。不替代 `PLAN.md` 里「静态域是闩、skill 是说明」的结论。  
+地位：**已被 [v1-research-plan.md](v1-research-plan.md) 取代**（2026-11-04 复审）。当时的具体仓库实例已经收成 `change-discipline`，并由目标仓库的 `latch.policy.json` 开关。本文保留为设计草稿；新文档修正了入口强制（hook 分层）、事实采集（快照与未跟踪文件）、状态变更（分阶段状态机 + 追加式 journal）与编译校验（七项体检）四部分。不替代 `PLAN.md` 里「静态域是闩、skill 是说明」的结论。  
 范围：只设计路由这一层。不新增工作流运行时，不把控制台做成图编辑器。
 
 ## 1. 现在缺的不是又一个 skill
@@ -33,16 +33,15 @@
 
 一个可以被 runner 单独判定真假的事实。判定不经过模型。
 
-例子（都来自 Openstrat 这次返工，不是新业务）：
+例子（都来自一次返工，不是新业务）：
 
 | 原子 | 真值从哪来 |
 | --- | --- |
 | `diff.useEffect` | diff 新增行里有 `useEffect(` |
 | `diff.tabKeepalive` | 新增 `visitedTabs` 或 `display: "none"` 保活 |
 | `diff.earlyReturnToTernary` | 新增把早返回改成三元 |
-| `diff.moduleConstCamel` | 新增模块级 camelCase 常量 |
-| `paths.charts` | diff 碰到 `components/charts/` |
-| `paths.optionAnalysis` | diff 碰到 `OptionAnalysisCard.tsx` |
+| `diff.moduleConstCase` | 新增模块常量不符合仓库约定的大小写 |
+| `paths.charts` | 曾用来表示 diff 碰到某个目录；两条 link 跑的是同一个域，后来没有保留 |
 
 原子只回答「是不是」。它不说下一步做什么。
 
@@ -80,25 +79,23 @@ n ≤ 8 时穷举是 256 次，不需要 SAT，也不需要图数据库。
 
 ### 入口只有一个
 
-仓库的 always-apply 不再写死 `latch run openstrat-change-discipline`。改成：
+仓库的 always-apply 不再写死 `latch run change-discipline`。改成：
 
 ```bash
-cd ~/Company/latch && npm run latch -- route openstrat --cwd ~/Company/openstrat_rn
+cd <latch> && npm run latch -- route change-discipline --cwd <repo>
 ```
 
 `latch route` 的 stdout 是固定文本，不是建议：
 
 ```text
-Latch route · openstrat
+Latch route · change-discipline
 atoms:
   diff.useEffect=0
   diff.tabKeepalive=0
   paths.charts=1
-  paths.optionAnalysis=0
 link: charts
 next:
-  latch run openstrat-change-discipline --cwd ~/Company/openstrat_rn
-  latch run openstrat-chart-axis --cwd ~/Company/openstrat_rn
+  latch run change-discipline --cwd <repo>
 ```
 
 agent 从上到下执行 `next`，不得插入别的域，不得跳过。`stop` 链路没有 `next`，进程退出码 1。
@@ -110,7 +107,7 @@ phase（plan / edit / commit）不作为原子。模型口头说「我在 plan�
 域不引用域。边写在路由上。
 
 ```text
-route openstrat
+route change-discipline
   link stop-discipline  when disciplineBreach     -> stop
   link charts           when paths.charts
                         and not disciplineBreach  -> run discipline, chart-axis
@@ -118,7 +115,7 @@ route openstrat
                         and not disciplineBreach  -> run discipline
 ```
 
-`openstrat-change-discipline` 仍是现在的直线（read、四条 assert、一个 slot）。它不知道 chart 域存在。chart 域以后如果要加，也只是另一条直线，由路由在分子匹配时排在它后面。
+`change-discipline` 仍是现在的直线（read、四条 assert、一个 slot）。它不知道 chart 域存在。chart 域以后如果要加，也只是另一条直线，由路由在分子匹配时排在它后面。
 
 这样加一个域不会改旧域的步骤，也不会让 skill 的 description 变成路由器。
 
@@ -133,7 +130,7 @@ route openstrat
 slot 的作答方式：agent 再跑一次
 
 ```bash
-latch route openstrat --cwd <repo> --slot style-drift=pass
+latch route change-discipline --cwd <repo> --slot style-drift=pass
 ```
 
 runner 把该 slot 写入回执。未作答的 slot 视为这条链路未完成，退出码非 0。现在的实现是 slot 只打印、进程照样 0，等于没闩住。
@@ -145,7 +142,7 @@ runner 把该 slot 写入回执。未作答的 slot 视为这条链路未完成�
 不把原子再拆成一套产品对象。一个路由目录：
 
 ```text
-library/routes/openstrat/
+library/routes/change-discipline/
   route.json          # atoms 引用、molecules、links
   atoms/*.mjs         # 从现有 steps 抽出来的判定，退出码 0/1
 ```
@@ -154,7 +151,7 @@ library/routes/openstrat/
 
 ```json
 {
-  "name": "openstrat",
+  "name": "change-discipline",
   "atoms": {
     "diff.useEffect": "atoms/diff-use-effect.mjs",
     "diff.tabKeepalive": "atoms/diff-tab-keepalive.mjs",
@@ -177,12 +174,12 @@ library/routes/openstrat/
     {
       "id": "charts",
       "when": { "all": ["paths.charts", { "not": "disciplineBreach" }] },
-      "to": { "kind": "run", "domains": ["openstrat-change-discipline"] }
+      "to": { "kind": "run", "domains": ["change-discipline"] }
     },
     {
       "id": "default",
       "when": { "not": "disciplineBreach" },
-      "to": { "kind": "run", "domains": ["openstrat-change-discipline"] }
+      "to": { "kind": "run", "domains": ["change-discipline"] }
     }
   ]
 }
@@ -206,8 +203,8 @@ library/routes/openstrat/
 2. `latch route <name> --cwd`：算原子、选唯一 link、打印 `next`、写回执、按序跑域（或 `--print` 只打印不跑）
 3. `--slot id=pass|fail` 写入回执；slot 未答则整次 route 失败
 4. diff 哈希变化则丢弃旧 slot
-5. 把现有四条纪律 assert 收成原子；`openstrat-change-discipline` 改为引用原子
-6. Openstrat 的 always-apply 改成只调用 `latch route openstrat`
+5. 把现有四条纪律 assert 收成原子；`change-discipline` 改为引用原子
+6. 目标仓库的 always-apply 改成只调用 `latch route change-discipline`
 7. 编译失败（重叠或遗漏）时 exit 2，文案指出哪两条 link、哪组赋值
 
 不做：
@@ -222,14 +219,14 @@ library/routes/openstrat/
 
 chart 专用域也不在这一轮新建。路由里可以先留出互斥的 `paths.charts` 分支，两边都先跑纪律域。等轴/网格规则被写成 assert 或 slot，再把该 link 的 `domains` 加上第二个名字。这是加一条 link 的目标，不是再抄一套组件代码。
 
-## 6. 和现有 Openstrat 纪律的对应
+## 6. 和改动纪律的对应
 
 | 现在 | v1 之后 |
 | --- | --- |
 | 四条 `steps/*.mjs` 各算各的 diff | 四个原子，route 与 domain 共用 |
 | 域是唯一入口 | route 是唯一入口，域是 link 上的站点 |
 | slot 打印完即通过 | slot 写入回执后才算这条 link 完成 |
-| 规则点名一个域 | 规则只点名 `latch route openstrat` |
+| 规则点名一个域 | 规则只点名 `latch route change-discipline` |
 | 卡顿、tab 保活等产品问题 | 不进路由。路由只表达「碰到哪类 diff 必须走哪条闩」 |
 
 ## 7. 其余基础功能（辅助，不挡 v1 路由）
@@ -251,13 +248,13 @@ chart 专用域也不在这一轮新建。路由里可以先留出互斥的 `pat
 
 明确不做的优化：
 
-- 为 Gamma/BasicChart 卡顿在 Latch 里加步骤
-- 把 `OptionAnalysis` 的业务判断抽进 Latch
+- 为某个界面的卡顿在 Latch 里加步骤
+- 把某个界面的业务判断抽进 Latch
 - 控制台里编辑分子和连线
 
 ## 8. 验收
 
-用 Openstrat 仓库当前工作区（或一份夹具 diff）跑 `latch route openstrat --check` 与 `latch route openstrat --cwd …`：
+用目标仓库当前工作区（或一份夹具 diff）跑 `latch route change-discipline --check` 与 `latch route change-discipline --cwd …`：
 
 - 四条纪律原子全假、且没碰到 charts：只命中 default，`next` 只有纪律域
 - 只把 `diff.useEffect` 设为真：只命中 stop，退出码 1，不打印第二个域
@@ -266,4 +263,4 @@ chart 专用域也不在这一轮新建。路由里可以先留出互斥的 `pat
 - 纪律域 slot 未答：route 失败；`--slot style-drift=fail` 后仍失败；`pass` 且 assert 已过才成功
 - 改动任意已跟踪文件使 diff 哈希变化：旧 slot 作废
 
-通过以上六条，再把 Openstrat 的 always-apply 从「点名一个域」改成「只跑 route」。在此之前不要改规则文案，避免 agent 接到一条还不存在的命令。
+通过以上六条，再把目标仓库的 always-apply 从「点名一个域」改成「只跑 route」。在此之前不要改规则文案，避免 agent 接到一条还不存在的命令。

@@ -10,7 +10,7 @@ Latch（闩）是一个本地技能库控制台。它只管两件事：技能从
 
 ## 名字与标记
 
-- 仓库：`~/Company/latch`
+- 仓库：Latch
 - 产品名：Latch
 - 中文：闩。闩是插在活动件上的固定销
 - 图标：`assets/icon.jpg`。黑底、象牙环、一根蓝色横销穿过环心。环是会转的 agent，销是不动的流程
@@ -30,7 +30,7 @@ Latch（闩）是一个本地技能库控制台。它只管两件事：技能从
 | 失败方式 | 漏触发，或把说明读歪 | 参数错或服务错，调用本身可复现 |
 | 依据 | [Agent Skills](https://agentskills.io/specification) 的渐进加载：启动时只看 name/description，命中才读正文 | [Skills vs MCP](https://blog.logrocket.com/skills-vs-mcp-tools-agent-guide/)：工具换可审计，skill 换判断空间 |
 
-Openstrat 那次返工就是动态端的失败：`AGENTS.md` 和 skill 都写了「不要 useEffect、不要把早返回改丑」，模型在 plan / build / commit 时没有打开它们。事后加一条 `alwaysApply` 规则才把关卡钉住。那条规则就是一个手写的静态域。
+一次返工就是动态端的失败：`AGENTS.md` 和 skill 都写了「不要 useEffect、不要把早返回改丑」，模型在 plan / build / commit 时没有打开它们。事后加一条 `alwaysApply` 规则才把关卡钉住。那条规则就是一个手写的静态域。
 
 静态域补的是中间：
 
@@ -71,10 +71,9 @@ latch/
 
 ```json
 {
-  "name": "openstrat-change-discipline",
-  "description": "改 Openstrat 前必须走过的关卡",
+  "name": "change-discipline",
+  "description": "改动前必须走过的关卡",
   "mount": {
-    "repos": ["openstrat_rn"],
     "when": ["plan", "edit", "commit"]
   },
   "steps": [
@@ -109,7 +108,7 @@ latch/
 1. `latch run <domain>`：按 `steps` 顺序执行。`read` / `assert` / `tool` 不过就停。`slot` 把问题打印成 agent 必须作答的固定格式。
 2. 目标仓库一条很短的 always-apply 规则，只写「先运行 `latch run <domain>`，不要自己重排这些步骤」。规则是闩，散文 skill 不再单独承担「记得去做」。
 
-第一个域就是现在的 `openstrat-change-discipline`：禁止新增 `useEffect`、禁止把早返回改成三元、禁止未经要求的 `display:none` 保活、模块常量沿用所在文件的全大写下划线。能写成 `assert` 的不留成散文。
+现在的域是 `change-discipline`：禁止新增 `useEffect`、禁止把早返回改成三元、禁止未经要求的 `display:none` 保活、模块常量跟目标仓库 `latch.policy.json` 里的命名约定走。能写成 `assert` 的不留成散文。具体项目的组件和样式约定留在该仓库的 `AGENTS.md`，不写进 Latch。
 
 ## 控制台
 
@@ -128,6 +127,6 @@ latch/
 1. 库的读写和规范校验，还没有挂载
 2. 挂载、卸载、发现检查、拷贝回退
 3. 静态域编辑器、`latch run`、生成 always-apply 规则
-4. 把 Openstrat 现有 skill 迁到 `library/`，仓库里只留指向 Latch 的挂载；把改动纪律收成第一个静态域
+4. 把目标仓库里手写的 skill 迁到 `library/`，仓库里只留指向 Latch 的挂载；把改动纪律收成第一个静态域
 
 仓库已有三屏控制台、runner、挂载、CLI 与 server（`a569508`，`npm run typecheck` 通过）。上面的四阶段表已被 `docs/v1-research-plan.md` 的 S0–S5 取代；路由、全链接与入口设计以该文档为准。

@@ -1,7 +1,32 @@
+import { addSessionStep, openSession, readSession } from "../shared/session.js";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+export const ENABLED_POLICY = {
+  version: 1,
+  changeDiscipline: { enabled: true, moduleConstCase: "screaming-snake" as const },
+};
+
+export async function coverSession(
+  repo: string,
+  at: string,
+  evidence: string,
+): Promise<void> {
+  if (!(await readSession(repo))) await openSession(repo, "desk");
+  await addSessionStep(repo, at, evidence);
+}
+
+export async function writePolicy(
+  repo: string,
+  policy: unknown = ENABLED_POLICY,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(repo, "latch.policy.json"),
+    `${JSON.stringify(policy, null, 2)}\n`,
+  );
+}
 
 export async function makeRepo(options: { agents?: boolean } = {}): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "latch-test-"));
@@ -39,7 +64,7 @@ export function fixture(name: string): string {
     process.cwd(),
     "library",
     "routes",
-    "openstrat",
+    "change-discipline",
     "fixtures",
     `${name}.json`,
   );

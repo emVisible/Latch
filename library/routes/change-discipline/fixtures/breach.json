@@ -1,0 +1,15 @@
+{
+  "added": [
+    "+import { useEffect } from \"react\";",
+    "+const x = useEffect(() => {});"
+  ],
+  "removed": [],
+  "changedPaths": ["src/panel.tsx"],
+  "policy": {
+    "version": 1,
+    "changeDiscipline": {
+      "enabled": true,
+      "moduleConstCase": "screaming-snake"
+    }
+  }
+}

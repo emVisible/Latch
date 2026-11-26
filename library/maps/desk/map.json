@@ -4,7 +4,7 @@
     {
       "id": "charts",
       "aliases": ["图表", "chart", "数据"],
-      "location": "components/charts/",
+      "location": "src/charts/",
       "observe": "证据里能看见图表刻度",
       "steps": [
         { "id": "read-agents", "kind": "read", "paths": ["AGENTS.md"] }
@@ -13,7 +13,7 @@
     {
       "id": "tables",
       "aliases": ["表格", "table", "数据"],
-      "location": "components/tables/",
+      "location": "src/tables/",
       "observe": "证据里能看见表格表头",
       "steps": [
         { "id": "read-agents", "kind": "read", "paths": ["AGENTS.md"] }

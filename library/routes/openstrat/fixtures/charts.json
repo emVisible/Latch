@@ -1,5 +1,0 @@
-{
-  "added": ["+const AXIS_TICK_FONT_SIZE = 12;"],
-  "removed": [],
-  "changedPaths": ["components/charts/GammaChart.tsx"]
-}

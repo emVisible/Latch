@@ -54,7 +54,7 @@ export async function writeDomain(def: DomainDefinition): Promise<void> {
  */
 export function compileAlwaysApplyRule(
   domain: DomainDefinition,
-  routeName = "openstrat",
+  routeName: string,
 ): string {
   return `---
 description: Latch 静态域 ${domain.name} 由 hook 强制执行，不要绕过

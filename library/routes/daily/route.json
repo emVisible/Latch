@@ -2,12 +2,18 @@
   "name": "daily",
   "version": 1,
   "policy": "unique",
-  "maxRounds": 4,
+  "maxRounds": 6,
   "routingAtoms": [
     "task.present",
     "claim.unsourced",
     "claim.unresolved",
     "write.undeclared",
+    "policy.active",
+    "changes.present",
+    "diff.useEffect",
+    "diff.tabKeepalive",
+    "diff.earlyReturnToTernary",
+    "diff.moduleConstCase",
     "map.hit",
     "map.miss",
     "map.ambiguous"
@@ -17,6 +23,21 @@
       "from": "domain",
       "domain": "daily-contract",
       "field": "ok"
+    },
+    "run.discipline.ok": {
+      "from": "domain",
+      "domain": "change-discipline",
+      "field": "ok"
+    },
+    "slot.answered": {
+      "from": "slot",
+      "slot": "style-drift",
+      "field": "answered"
+    },
+    "slot.pass": {
+      "from": "slot",
+      "slot": "style-drift",
+      "field": "pass"
     },
     "run.follow.ok": {
       "from": "domain",
@@ -28,11 +49,29 @@
     "claim.unsourced => task.present",
     "claim.unresolved => task.present",
     "write.undeclared => task.present",
+    "diff.useEffect => policy.active",
+    "diff.tabKeepalive => policy.active",
+    "diff.earlyReturnToTernary => policy.active",
+    "diff.moduleConstCase => policy.active",
+    "diff.useEffect => changes.present",
+    "diff.tabKeepalive => changes.present",
+    "diff.earlyReturnToTernary => changes.present",
+    "diff.moduleConstCase => changes.present",
+    "slot.pass => slot.answered",
     "map.hit => !map.miss",
     "map.hit => !map.ambiguous",
     "map.miss => !map.ambiguous"
   ],
-  "molecules": {},
+  "molecules": {
+    "disciplineBreach": {
+      "any": [
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ]
+    }
+  },
   "stages": {
     "entry": {
       "scope": [
@@ -64,7 +103,110 @@
               { "not": "write.undeclared" }
             ]
           },
-          "to": { "kind": "run", "domain": "daily-contract", "then": "map" }
+          "to": { "kind": "run", "domain": "daily-contract", "then": "discipline" }
+        }
+      ]
+    },
+    "discipline": {
+      "scope": [
+        "run.contract.ok",
+        "policy.active",
+        "changes.present",
+        "diff.useEffect",
+        "diff.tabKeepalive",
+        "diff.earlyReturnToTernary",
+        "diff.moduleConstCase"
+      ],
+      "links": [
+        {
+          "id": "contract-failed",
+          "when": { "not": "run.contract.ok" },
+          "to": { "kind": "stop", "exit": 1, "reason": "任务契约域未通过" }
+        },
+        {
+          "id": "skip-inactive",
+          "when": {
+            "all": ["run.contract.ok", { "not": "policy.active" }]
+          },
+          "to": { "kind": "goto", "then": "map" }
+        },
+        {
+          "id": "skip-clean",
+          "when": {
+            "all": [
+              "run.contract.ok",
+              "policy.active",
+              { "not": "changes.present" }
+            ]
+          },
+          "to": { "kind": "goto", "then": "map" }
+        },
+        {
+          "id": "stop-discipline",
+          "when": {
+            "all": [
+              "run.contract.ok",
+              "policy.active",
+              "changes.present",
+              "disciplineBreach"
+            ]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "diff 违反改动纪律" }
+        },
+        {
+          "id": "check",
+          "when": {
+            "all": [
+              "run.contract.ok",
+              "policy.active",
+              "changes.present",
+              { "not": "disciplineBreach" }
+            ]
+          },
+          "to": {
+            "kind": "run",
+            "domain": "change-discipline",
+            "then": "after-discipline"
+          }
+        }
+      ]
+    },
+    "after-discipline": {
+      "scope": ["run.discipline.ok", "slot.answered", "slot.pass"],
+      "links": [
+        {
+          "id": "discipline-failed",
+          "when": { "not": "run.discipline.ok" },
+          "to": { "kind": "stop", "exit": 1, "reason": "纪律域未通过" }
+        },
+        {
+          "id": "slot-pending",
+          "when": {
+            "all": ["run.discipline.ok", { "not": "slot.answered" }]
+          },
+          "to": {
+            "kind": "ask",
+            "slot": "style-drift",
+            "then": "after-discipline"
+          }
+        },
+        {
+          "id": "slot-failed",
+          "when": {
+            "all": [
+              "run.discipline.ok",
+              "slot.answered",
+              { "not": "slot.pass" }
+            ]
+          },
+          "to": { "kind": "stop", "exit": 1, "reason": "style-drift 判定为 fail" }
+        },
+        {
+          "id": "continue",
+          "when": {
+            "all": ["run.discipline.ok", "slot.answered", "slot.pass"]
+          },
+          "to": { "kind": "goto", "then": "map" }
         }
       ]
     },

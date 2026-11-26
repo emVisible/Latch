@@ -1,0 +1,9 @@
+{
+  "name": "diff-early-return",
+  "atom": "diff.earlyReturnToTernary",
+  "durability": "lasting",
+  "seen": 0,
+  "lock": "assert",
+  "naiveExpect": true,
+  "status": "candidate"
+}

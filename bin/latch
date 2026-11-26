@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source="${BASH_SOURCE[0]}"
+while [ -L "$source" ]; do
+  dir="$(cd -P "$(dirname "$source")" && pwd)"
+  target="$(readlink "$source")"
+  case "$target" in
+    /*) source="$target" ;;
+    *) source="$dir/$target" ;;
+  esac
+done
+root="$(cd -P "$(dirname "$source")/.." && pwd)"
+
+exec node --import "$root/node_modules/tsx/dist/loader.mjs" "$root/cli/run.ts" "$@"

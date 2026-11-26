@@ -10,6 +10,7 @@ import { readLinkmap, listRoutes, readRoute } from "./route.js";
 import { checkRoute } from "./routeRunner.js";
 import { validateDomain, validateRoute, validateSettings } from "./schema.js";
 import { loadSettings } from "./settings.js";
+import { inspectPolicy } from "./snapshot.js";
 import { listSkills, readSkill } from "./skill.js";
 
 export async function runDoctor(): Promise<string> {
@@ -27,6 +28,9 @@ export async function runDoctor(): Promise<string> {
   const settings = await loadSettings();
   const settingsIssues = validateSettings(settings);
   note(settingsIssues.length === 0, `settings.json：${settingsIssues.length ? settingsIssues.join("；") : "合法"}`);
+  if (settings.targets.length === 0) {
+    lines.push("--  还没有挂载目标：npm run latch -- init --cwd <repo>");
+  }
 
   const skills = await listSkills();
   for (const name of skills) {
@@ -79,6 +83,11 @@ export async function runDoctor(): Promise<string> {
     } catch {
       note(false, `target ${target.id} 路径不存在：${target.path}`);
       continue;
+    }
+    const policy = await inspectPolicy(target.path);
+    note(policy.ok, `target ${target.id} policy：${policy.text}`);
+    if (policy.ok && policy.text.includes("无 latch.policy.json")) {
+      lines.push(`    下一步：npm run latch -- init --cwd ${target.path}`);
     }
     for (const skill of skills) {
       const [status] = await scanMounts(skill, [target]);

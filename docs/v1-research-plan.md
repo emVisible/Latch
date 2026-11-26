@@ -1,7 +1,7 @@
 # Latch v1 调研方案计划书 · 静态域 / 全链接 / 路由与状态
 
 日期：2026-11-04  
-地位：**v1 更进依据**。审阅并取代 `docs/v1-route.md` 的设计结论；`PLAN.md` 的三层定位（Skill 动态端 / 静态域 / MCP 静态端）不变。  
+地位：**v1 更进依据**。审阅并取代 `docs/v1-route.md` 的设计结论；`PLAN.md` 的三层定位（Skill 动态端 / 静态域 / MCP 静态端）不变。文中的具体仓库实例后来收成 `change-discipline`，开关在目标仓库的 `latch.policy.json`。  
 基线：`git log` 单提交 `a569508`，`npm run typecheck` 通过，`docs/` 目录尚未纳入 git。  
 范围：路由层 + 它依赖的事实采集、状态、入口、编译校验；其余基础功能与优化列在第 5 节。
 
@@ -15,7 +15,7 @@
 
 | # | 缺陷 | 后果 |
 | --- | --- | --- |
-| A | **入口仍然是散文**。always-apply 规则只是另一段 `AGENTS.md` | Openstrat 那次返工的原因就是「模型没打开说明」。用一条更短的说明去钉住另一条说明，是同一个失败模式的重演。静态域必须挂到工具链的强制事件上 |
+| A | **入口仍然是散文**。always-apply 规则只是另一段 `AGENTS.md` | 那次返工的原因就是「模型没打开说明」。用一条更短的说明去钉住另一条说明，是同一个失败模式的重演。静态域必须挂到工具链的强制事件上 |
 | B | **事实采集不可信**。全部原子来自 `git diff HEAD` | 未跟踪新文件漏检（已本地实测）、暂存区与工作区混淆、plan 阶段无 diff、commit 后 diff 归零、每个原子各扫一遍 diff |
 | C | **「全链接」只做了覆盖与互斥**，把状态变更压成了一次性回执 | 用户定义的「全分支/全链接」还要求：链路可达、域不孤立、域与域之间如何连接、执行结果如何决定下一跳。一次性预选 link 回答不了「静态域之间如何导向」 |
 
@@ -44,7 +44,7 @@
 | `PLAN.md:127` 仍写「当前仓库停在本方案、图标和空的 `library/`」 | 实际已有三屏 console、runner、mount、CLI、server、README「v1 核心」章节 | 改掉；阶段表整体重写为第 6 节 |
 | `PLAN.md:52-58` 的挂载描述 | 实现里**没有发现检查**（只在 symlink 创建抛错时回退拷贝）；Cursor 官方 skills 文档现在**完全未提符号链接**，2.5 修复的说法无从核对 | 降级为「本地经验，需实测」，补 `latch doctor` 发现检查 |
 | `PLAN.md:56` 把 `~/.agents/skills` 当作兼容目标 | Cursor 文档明确 `~/.agents/skills` **不会同步到 Cloud Agent**，且会加载 `.claude/skills`、`.codex/skills` 等兼容目录 | 目标清单扩到多 agent，并标注各自语义 |
-| `PLAN.md:60` 说社区 skill 收进 `library/` | `openstrat_rn/.agents/skills/` 里 `code-comments`、`expo-*`、`vercel-react-native-skills` 仍是项目内独立副本 | 列入 P1 迁移 |
+| `PLAN.md:60` 说社区 skill 收进 `library/` | `<repo>/.agents/skills/` 里 `code-comments`、`expo-*`、`vercel-react-native-skills` 仍是项目内独立副本 | 列入 P1 迁移 |
 | `docs/v1-route.md` 本身 | `git status` 显示 `docs/` 未跟踪 | 计划文档先入 git，否则下次会话丢失 |
 
 ### 1.3 `docs/v1-route.md` 的内部矛盾
@@ -79,10 +79,10 @@
 | `cli/run.ts` | 只有 `run` / `rule`，没有 `route`、`--check`、`--print`、`--slot` |
 | `server/index.ts` | 无 route 端点；`PUT /api/skills/:name` 把 URL 参数直接拼进路径且不过滤；`PUT /api/domains/:name` 无 schema 校验；`serve({ port })` 未显式绑定 127.0.0.1 |
 | `shared/mount.ts:63-64, 95-96` | 挂载前 `fs.rm(dest, recursive)`、卸载时同样无条件删。若目标位置是用户手工放的同名 skill 目录，会被静默删除 |
-| `web/src/pages/DeployPage.tsx:12` | `domainName` 硬编码 `openstrat-change-discipline` |
+| `web/src/pages/DeployPage.tsx:12` | `domainName` 硬编码 `change-discipline` |
 | `web/src/pages/*.tsx` | 三屏里**看不到路由**、看不到编译结果、看不到回执 |
 | 仓库整体 | 无测试脚本、无 schema 校验、无 fixture；`docs/v1-route.md` 的 6 条验收全部依赖手工 |
-| `openstrat_rn/.gitignore` | 没有 `.latch/`，回执一旦生成就会被提交 |
+| `<repo>/.gitignore` | 没有 `.latch/`，回执一旦生成就会被提交 |
 
 ---
 
@@ -199,7 +199,7 @@
 - **转移**：`选 link → 执行动作 → 追加一条 journal 记录 → 进入 `to.then` 阶段 → 重新求值`。每一回合都用同一张编译好的链路表，不重新让模型决策。
 - **作废规则**：`snapshotHash` 变了、`routeHash` 变了、`atoms/*.mjs` 内容变了、或 `--window` 变了 → 旧 slot 全部作废，必须重答。记录 `prevHash` 形成哈希链，防止「diff 变回原样时把旧 pass 复活」。
 - **并发**：回执写入用 `.latch/last-route.json.lock`（O_EXCL）或单写者；`latch` 与 hook 同时触发时不互相覆盖。
-- **不落对话**：目标仓库 `.latch/` 加进 `.gitignore`（当前 openstrat_rn 未加）。
+- **不落对话**：目标仓库 `.latch/` 加进 `.gitignore`（当时的目标仓库未加）。
 
 ### 3.5 多回合：静态域之间如何连接
 
@@ -222,7 +222,7 @@
 
 ```json
 {
-  "name": "openstrat",
+  "name": "change-discipline",
   "version": 1,
   "policy": "unique",
   "maxRounds": 4,
@@ -232,7 +232,7 @@
     "paths.charts"
   ],
   "resultAtoms": {
-    "run.discipline.ok": { "from": "domain", "domain": "openstrat-change-discipline", "field": "ok" },
+    "run.discipline.ok": { "from": "domain", "domain": "change-discipline", "field": "ok" },
     "slot.answered":     { "from": "slot",   "slot": "style-drift", "field": "answered" },
     "slot.pass":         { "from": "slot",   "slot": "style-drift", "field": "pass" }
   },
@@ -257,12 +257,12 @@
         {
           "id": "charts",
           "when": { "all": ["paths.charts", { "not": "disciplineBreach" }] },
-          "to": { "kind": "run", "domain": "openstrat-change-discipline", "then": "after-discipline" }
+          "to": { "kind": "run", "domain": "change-discipline", "then": "after-discipline" }
         },
         {
           "id": "default",
           "when": { "all": [{ "not": "paths.charts" }, { "not": "disciplineBreach" }] },
-          "to": { "kind": "run", "domain": "openstrat-change-discipline", "then": "after-discipline" }
+          "to": { "kind": "run", "domain": "change-discipline", "then": "after-discipline" }
         }
       ]
     },
@@ -307,7 +307,7 @@
 ### 3.7 导向 agent：四层入口，只有最上面两层是「闩」
 
 ```
-L0  git pre-commit / pre-push        → latch route openstrat --window=staged    （工具链强制，exit≠0 即拦）
+L0  git pre-commit / pre-push        → latch route change-discipline --window=staged    （工具链强制，exit≠0 即拦）
 L1  .cursor/hooks.json               → beforeSubmitPrompt / preToolUse(Write|Shell)
                                        command: latch route ... ; failClosed: true ; 阻断用 exit 2
     .claude/settings.json            → PreToolUse / UserPromptSubmit ; onFailure: "block" ; exit 2
@@ -367,7 +367,7 @@ API 对应 `GET /api/routes`、`GET|POST /api/routes/:name/check`、`POST /api/r
 
 1. **文档归位**：修 `PLAN.md:127`、给 `v1-route.md` 加「已被本文件取代」标注、把 `docs/` 纳入 git。
 2. **快照层**：新增 `shared/snapshot.ts` 与 `library/atoms/lib/snapshot.mjs`，把 `git-diff.mjs` 换成读快照；补未跟踪文件；四个 `steps/*.mjs` 就地改为纯函数并加 fixture 测试。
-3. **schema 与编译器**：`shared/schema.ts`（domain / route / settings 三份 JSON Schema 或 zod）、`molecule.ts`（DAG 求值）、`linkmap.ts`（七项检查 + `2^n` / BDD 后备）。先把现有 `openstrat-change-discipline` 写成一条可通过 `--check` 的路由。
+3. **schema 与编译器**：`shared/schema.ts`（domain / route / settings 三份 JSON Schema 或 zod）、`molecule.ts`（DAG 求值）、`linkmap.ts`（七项检查 + `2^n` / BDD 后备）。先把现有 `change-discipline` 写成一条可通过 `--check` 的路由。
 4. **runner 改造**：`runDomain` 返回 step 级结果与 slot 状态；slot 未答时 `ok=false`；`assert` 支持 `atom`；`journal.ts` 写追加式日志与哈希链。
 5. **入口替换**：先加 git `pre-commit` 与 `.cursor/hooks.json`（`failClosed: true`），确认生效后，再把 `.mdc` 改成解释层。顺序不能反——**不要在命令还不存在时改规则文案**（沿用 `v1-route.md` §8 的正确告诫）。
 6. **控制台**：链路页 + 回执查看；`DeployPage` 去掉硬编码域名；库页显示路由与 hook 状态。
@@ -388,12 +388,12 @@ API 对应 `GET /api/routes`、`GET|POST /api/routes/:name/check`、`POST /api/r
 
 | 项 | 依据 / 风险 | 动作 |
 | --- | --- | --- |
-| 挂载/卸载的破坏性删除 | `mount.ts:63-64,95-96` 对同名目标无条件 `rm -rf`。`openstrat_rn/.agents/skills/` 里已有 4 个非 Latch 管理的社区 skill 目录，误挂同名会直接删掉 | 只删「symlink 指向 `library/`」或「含 `.latch-source` 且 sourceRelative 指向 Latch」的挂载；其它一律拒绝并打印目标路径；`fs.rm` 改为 `lstat` 判定后单文件/单链接删除；卸载前备份到 `.latch/trash/` |
+| 挂载/卸载的破坏性删除 | `mount.ts:63-64,95-96` 对同名目标无条件 `rm -rf`。`<repo>/.agents/skills/` 里已有 4 个非 Latch 管理的社区 skill 目录，误挂同名会直接删掉 | 只删「symlink 指向 `library/`」或「含 `.latch-source` 且 sourceRelative 指向 Latch」的挂载；其它一律拒绝并打印目标路径；`fs.rm` 改为 `lstat` 判定后单文件/单链接删除；卸载前备份到 `.latch/trash/` |
 | API 路径穿越 | `PUT /api/skills/:name`、`GET /api/skills/:name` 把 URL 参数直接拼路径；`PUT /api/domains/:name` 无校验 | 名称统一走 `NAME_RE` + 目录白名单；`PUT` 前做 schema 校验；`realpath` 必须落在 `LIBRARY_DIR` 内 |
 | 本地服务暴露面 | `serve({ port })` 未绑定 host；`tool` step 用 `shell: true` 执行 JSON 里的字符串 | 绑定 `127.0.0.1`；`tool` 改为 argv 数组 + 白名单，或至少在 README 声明「`library/` 是可执行可信源，等同本地代码」 |
 | 事实采集（第 3.2 节） | 已实测漏未跟踪文件 | 快照层一次性采集 |
 | slot 未落盘 / 退出码 0 | `runner.ts:60-67` | runner 返回结构 + journal 绑定 |
-| `.gitignore` | openstrat_rn 未含 `.latch/` | 部署 hook 时自动追加，幂等 |
+| `.gitignore` | <repo> 未含 `.latch/` | 部署 hook 时自动追加，幂等 |
 | 文档与实现脱节 | 第 1.2 节 | 同批修掉 |
 
 ### 5.2 P1 值得顺手收
@@ -418,7 +418,7 @@ API 对应 `GET /api/routes`、`GET|POST /api/routes/:name/check`、`POST /api/r
 | `policy: first/priority` 与「被遮蔽 link」报告 | 让模型填原子、用 skill description 做路由 |
 | 原子级缓存（按 `snapshotHash` 复用真值表） | 域内 if/else、循环、子图 |
 | 控制台只读真值表可视化（不是连线编辑器） | 图编辑器、常驻进程、队列、LangGraph/Temporal |
-| 多 repo / 多 route 的 `--check` 汇总 | 为 Gamma/BasicChart 卡顿在 Latch 里加步骤；把 OptionAnalysis 业务判断抽进 Latch |
+| 多 repo / 多 route 的 `--check` 汇总 | 为某个界面的卡顿在 Latch 里加步骤；把界面业务判断抽进 Latch |
 | `read` 步骤把文件内容（设字数上限）打进 stdout | 在这一轮迁移无关社区 skill 的全部规则正文 |
 
 性能上还有一条明确收益：现在 n 个原子脚本各跑一次 `git diff`；快照化后变成一次采集 + n 次纯函数判定，且判定结果可按 `snapshotHash` 缓存。这是把「原子化」从概念变成实际收益的关键一步。
@@ -461,7 +461,7 @@ API 对应 `GET /api/routes`、`GET|POST /api/routes/:name/check`、`POST /api/r
 13. 对 `code-comments` 这类非 Latch 管理的目录执行同名挂载/卸载 → 被拒绝，目录内容不变
 14. `npm run typecheck` 与 `npm test` 全绿
 
-**顺序约束**：1–12 全通过之后，才把 Openstrat 的 `.mdc` 与 hook 从「点名一个域」切到「只跑 route」。
+**顺序约束**：1–12 全通过之后，才把目标仓库的 `.mdc` 与 hook 从「点名一个域」切到「只跑 route」。
 
 ---
 
@@ -515,10 +515,10 @@ API 对应 `GET /api/routes`、`GET|POST /api/routes/:name/check`、`POST /api/r
 ### 验证结果
 
 - `npm run typecheck`、`npm run build`、`npm test` 全绿；**38 项测试**覆盖：未跟踪文件的 `useEffect` 检出、stage 决策表 32/6 种可行赋值 0 遗漏 0 重叠、七项体检的各类反例、slot 生命周期与三重哈希作废、journal 哈希链与防篡改、hook 阻断与 git pre-commit 拦截、挂载归属保护。
-- 真实 Openstrat 仓库只读验证：`latch atoms` 与 `latch route --print` 正常；`doctor` 报告挂载 `owned=true valid=true discovered=true`、路由编译通过。
+- 真实目标仓库只读验证：`latch atoms` 与 `latch route --print` 正常；`doctor` 报告挂载 `owned=true valid=true discovered=true`、路由编译通过。
 - 实测修正了一个设计期未发现的坑：`answerSlot` 首次写入会改变工作区快照，已用 `collectStableSnapshot` 在哈希前先完成一次性初始化。
 
 ### 唯一剩余的显式动作
 
-`latch hooks install --target openstrat_rn` **尚未执行**。它会在 live 仓库里启用阻断式门禁；按计划书第 6.3 节的顺序约束，应在 14 条验收逐条确认后再激活。当前所有 hook 生成与阻断行为已在临时仓库的自动化测试中验证，不依赖在真实仓库上试错。
+`latch hooks install --target <repo>` **尚未执行**。它会在 live 仓库里启用阻断式门禁；按计划书第 6.3 节的顺序约束，应在 14 条验收逐条确认后再激活。当前所有 hook 生成与阻断行为已在临时仓库的自动化测试中验证，不依赖在真实仓库上试错。
 

@@ -1,27 +1,19 @@
 ---
 name: exam-pass
 description: >-
-  Read the data source, then pass two routine questions and one trap before a
-  fix counts. Use when a card claims a mistake is fixed and needs promotion.
+  Pass two routine questions and one trap taken from a recorded naive edit
+  before a fix counts. Use when a card claims a lasting mistake is fixed.
 ---
 
 # 三题考卷
 
-先用路由里的 `read` 步骤打开数据源。回执在 `.latch/reads.json`。没有这次读取，考卷拒绝。
+先用路由里的 `read` 读数据源。没有 `.latch/reads.json` 里的回执，考卷拒绝。
 
-`exam.json` 恰好三题：两道 `routine`，一道 `trap`。三份夹具两两不同。陷阱题的期望不同于 `naiveExpect`。每题的 `source` 是刚读过的路径和 sha256。
+恰好两道 `routine`、一道 `trap`。陷阱题的 `naive` 必须是 `latch card capture-naive` 记下来的路径和 sha256。没有这份记录，退出码 1。
 
 ```bash
+latch card capture-naive <card> --cwd <repo> --source <path>
 latch exam <card> --cwd <repo>
 ```
 
-考卷只看原子和夹具，不看这张卡的说明。退出码不是 0，修复就不算通过。
-
-同一原子还要在两个不同快照里被路由看见，或者当前快照上由声明了这个 slot 的路由答过 pass：
-
-```bash
-latch slot card-gate card-promote=pass --cwd <repo>
-latch card promote <card> --cwd <repo>
-```
-
-原子不在任何路由的 `scope` 里，`promote` 不会把卡标成 `latched`。
+出题不读原子实现，也不读这张卡的说明。批改只跑原子对夹具。原子和 `exam.json` 在同一次提交里，`promote` 退出码 1。

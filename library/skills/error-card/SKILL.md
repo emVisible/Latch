@@ -8,18 +8,8 @@ description: >-
 
 # 一个错误一张卡
 
-只收长期错误。一次性错误留在当次任务里，不建卡。一张卡只记一个错误。
+先分清这句话活多久。一次性要求只写在任务单的 `durability: once` 里，不建卡。长期要求才建一张卡，一张卡只记一个错误。
 
-`library/cards/<id>/` 里三样一起在：
+卡里要有检查原子，并且 `SKILL.md` 设 `disable-model-invocation: true`。只写说明不算修过。
 
-- `card.json`：`lock` 只能是 `architecture`、`assert` 或 `test`。
-- 一个检查原子，签名与 `library/atoms/index.mjs` 相同。
-- `SKILL.md`，并且 `disable-model-invocation: true`。它只解释这张卡。
-
-只写说明不算修过。原子写进某条路由的 `scope` 之后：
-
-```bash
-latch check <route>
-```
-
-退出码不是 0，这张卡还不能往下考。
+原子还没出现在 `daily` 从入口走得到的 `scope` 里，就不能标成 `latched`。`promote` 不改路由。

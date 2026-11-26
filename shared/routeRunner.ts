@@ -170,7 +170,7 @@ function pickLink(
 export async function runRoute(
   name: string,
   cwd: string,
-  options: { window?: string; print?: boolean } = {},
+  options: { window?: string; print?: boolean; session?: string } = {},
 ): Promise<RouteRunResult> {
   const windowSpec = options.window ?? "worktree";
   const route = await readRoute(name);
@@ -226,7 +226,7 @@ export async function runRoute(
 
   let release = async () => {};
   try {
-    release = await acquireLease(gitRoot(cwd));
+    release = await acquireLease(gitRoot(cwd), options.session || undefined);
   } catch (e) {
     if (e instanceof LeaseError) {
       return {
@@ -360,6 +360,8 @@ export async function runRoute(
     const to = link.to;
     if (to.kind === "stop") {
       log.push(`  ${to.reason}`);
+      const hint = stopHint(link.id, snapshot.repo);
+      if (hint && to.exit !== 0) log.push(`  ${hint}`);
       exitCode = to.exit;
       status = exitCode === 0 ? "passed" : "blocked";
       break;
@@ -383,6 +385,17 @@ export async function runRoute(
       log.push(`  slot ${to.slot}=${journal.slotAnswers[to.slot]}`);
       if (to.then === stageId && round >= route.maxRounds - 1) {
         log.push("[终止] ask 自环达到 maxRounds 上限");
+        exitCode = 4;
+        status = "failed";
+        break;
+      }
+      journal.currentStage = to.then;
+      continue;
+    }
+
+    if (to.kind === "goto") {
+      if (to.then === stageId && round >= route.maxRounds - 1) {
+        log.push("[终止] goto 自环达到 maxRounds 上限");
         exitCode = 4;
         status = "failed";
         break;
@@ -436,6 +449,25 @@ export async function runRoute(
   } finally {
     await release();
   }
+}
+
+function stopHint(linkId: string, repo: string): string | null {
+  if (linkId === "absent") {
+    return `下一步：npm run latch -- task open --cwd ${repo} --intent "<要做什么>" --durability once --writable <path>`;
+  }
+  if (linkId === "breach") {
+    return `下一步：要改的路径放进 --writable，或先提交不属于这次任务的文件`;
+  }
+  if (linkId === "inactive") {
+    return `下一步：npm run latch -- init --cwd ${repo}`;
+  }
+  if (linkId === "miss" || linkId === "ambiguous" || linkId === "unset") {
+    return `下一步：npm run latch -- map desk --query "<说法>" --cwd ${repo}`;
+  }
+  if (linkId === "stop-discipline") {
+    return "下一步：按 diff 改掉违纪，再重跑同一条路由";
+  }
+  return null;
 }
 
 async function findSlotQuestion(

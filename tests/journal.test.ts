@@ -15,7 +15,7 @@ import {
 import { cleanup, makeRepo } from "./helpers.js";
 
 const binding = {
-  route: "openstrat",
+  route: "daily",
   repo: "/tmp/repo",
   window: "worktree",
   snapshotHash: "snap1",

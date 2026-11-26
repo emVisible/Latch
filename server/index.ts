@@ -7,7 +7,11 @@ import { loadAtomRegistry } from "../shared/atoms.js";
 import { compileAlwaysApplyRule, listDomains, readDomain, writeDomain } from "../shared/domain.js";
 import { runDoctor } from "../shared/doctor.js";
 import { installHooks, hookStatus } from "../shared/hooks.js";
+import { InitError, initRepo } from "../shared/init.js";
 import { readJournal } from "../shared/journal.js";
+import { loopView } from "../shared/loopView.js";
+import { readMapForRepo, resolveMap, writeResolution } from "../shared/map.js";
+import { addSessionStep, endSession, openSession, SessionError } from "../shared/session.js";
 import { MountConflictError, mountSkill, scanMounts, unmountSkill } from "../shared/mount.js";
 import { assertSafeName, LATCH_ROOT } from "../shared/paths.js";
 import { readLinkmap, listRoutes, readRoute, writeRoute } from "../shared/route.js";
@@ -19,7 +23,7 @@ import {
   runRoute,
 } from "../shared/routeRunner.js";
 import { runDomain, formatRunOutput } from "../shared/runner.js";
-import { validateDomain, validateRoute, validateSettings } from "../shared/schema.js";
+import { MODULE_CONST_CASES, validateDomain, validateRoute, validateSettings, type ModuleConstCase } from "../shared/schema.js";
 import { loadSettings, saveSettings } from "../shared/settings.js";
 import {
   listSkills,
@@ -27,7 +31,7 @@ import {
   serializeSkill,
   writeSkill,
 } from "../shared/skill.js";
-import { collectSnapshot } from "../shared/snapshot.js";
+import { collectSnapshot, writeTaskFile } from "../shared/snapshot.js";
 import { evaluateAtoms } from "../shared/atoms.js";
 
 const app = new Hono();
@@ -127,8 +131,10 @@ app.put("/api/domains/:name", async (c) => {
 app.get("/api/domains/:name/rule", async (c) => {
   const name = safe(c.req.param("name"));
   if (!name) return c.json({ error: "invalid name" }, 400);
+  const route = c.req.query("route");
+  if (!route) return c.json({ error: "route required" }, 400);
   try {
-    return c.text(compileAlwaysApplyRule(await readDomain(name)));
+    return c.text(compileAlwaysApplyRule(await readDomain(name), route));
   } catch {
     return c.json({ error: "not found" }, 404);
   }
@@ -138,13 +144,107 @@ app.post("/api/domains/:name/install-rule", async (c) => {
   const name = safe(c.req.param("name"));
   if (!name) return c.json({ error: "invalid name" }, 400);
   const { targetId, route } = await c.req.json<{ targetId: string; route?: string }>();
+  if (!route) return c.json({ error: "route required" }, 400);
   const target = (await loadSettings()).targets.find((t) => t.id === targetId);
   if (!target) return c.json({ error: "unknown target" }, 400);
   const def = await readDomain(name);
   const dest = path.join(target.path, ".cursor", "rules", `latch-${name}.mdc`);
   await fs.mkdir(path.dirname(dest), { recursive: true });
-  await fs.writeFile(dest, compileAlwaysApplyRule(def, route ?? "openstrat"), "utf8");
+  await fs.writeFile(dest, compileAlwaysApplyRule(def, route), "utf8");
   return c.json({ path: dest });
+});
+
+app.post("/api/init", async (c) => {
+  const body = await c.req.json<{ path?: string; moduleConstCase?: string }>();
+  if (!body.path) return c.json({ error: "需要仓库的绝对路径" }, 400);
+  const mode = body.moduleConstCase ?? "screaming-snake";
+  if (!(MODULE_CONST_CASES as readonly string[]).includes(mode)) {
+    return c.json({ error: "moduleConstCase 只能是 screaming-snake / camel / off" }, 400);
+  }
+  try {
+    const result = await initRepo(body.path, { moduleConstCase: mode as ModuleConstCase });
+    return c.json({
+      root: result.root,
+      target: result.target,
+      wrotePolicy: result.wrotePolicy,
+      wroteAgents: result.wroteAgents,
+      lines: result.lines,
+    });
+  } catch (e) {
+    const message = e instanceof InitError ? e.message : String(e);
+    return c.json({ error: message }, 400);
+  }
+});
+
+app.get("/api/loop", async (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "需要 cwd" }, 400);
+  return c.json(await loopView(path.resolve(cwd)));
+});
+
+app.post("/api/loop/task", async (c) => {
+  const body = await c.req.json<{
+    cwd?: string;
+    intent?: string;
+    durability?: string;
+    writable?: string;
+  }>();
+  if (!body.cwd || !body.intent || (body.durability !== "once" && body.durability !== "lasting")) {
+    return c.json({ error: "需要 cwd、intent，以及 once 或 lasting" }, 400);
+  }
+  try {
+    await writeTaskFile(path.resolve(body.cwd), {
+      intent: body.intent,
+      durability: body.durability,
+      writable: (body.writable ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+      returns: [],
+    });
+    return c.json(await loopView(path.resolve(body.cwd)));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+app.post("/api/loop/session", async (c) => {
+  const body = await c.req.json<{
+    cwd?: string;
+    action?: string;
+    target?: string;
+    at?: string;
+    evidence?: string;
+  }>();
+  if (!body.cwd || !body.action) return c.json({ error: "需要 cwd 和 action" }, 400);
+  const cwd = path.resolve(body.cwd);
+  try {
+    if (body.action === "open") await openSession(cwd, body.target ?? "");
+    else if (body.action === "step") await addSessionStep(cwd, body.at ?? "", body.evidence ?? "");
+    else if (body.action === "end") await endSession(cwd);
+    else return c.json({ error: "action 只能是 open、step 或 end" }, 400);
+    return c.json(await loopView(cwd));
+  } catch (e) {
+    const message = e instanceof SessionError ? e.message : e instanceof Error ? e.message : String(e);
+    return c.json({ error: message }, 400);
+  }
+});
+
+app.post("/api/loop/map", async (c) => {
+  const body = await c.req.json<{ cwd?: string; app?: string; query?: string }>();
+  if (!body.cwd || !body.query) return c.json({ error: "需要 cwd 和 query" }, 400);
+  const cwd = path.resolve(body.cwd);
+  try {
+    const map = await readMapForRepo(cwd, body.app || "desk");
+    const resolved = resolveMap(map, body.query);
+    await writeResolution(cwd, {
+      app: map.name,
+      query: body.query,
+      state: resolved.state,
+      entryId: resolved.state === "hit" ? resolved.entryIds[0] : null,
+      entryIds: resolved.entryIds,
+    });
+    return c.json(await loopView(cwd));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
 });
 
 app.get("/api/settings/targets", async (c) => c.json(await loadSettings()));

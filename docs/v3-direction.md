@@ -30,6 +30,6 @@ v3 的 `latched` 还要求这个原子出现在 `daily` 实际会执行到的 sc
 ## 不做
 
 - 不增加第六份以外的核心 skill，不把错误实例升成核心 skill。
-- 不在上面三件有测试之前，给 openstrat 装 live hook。
+- 三件有测试之前，不给任何目标装 live hook。
 - 不把控制台做成编辑器，不把点击运行时放进 Latch。
 - 不改 Axis 的收藏库。

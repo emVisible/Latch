@@ -4,3 +4,4 @@ dist
 .latch-source
 .workbuddy-ai/
 .latch/
+settings.json

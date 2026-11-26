@@ -3,7 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { repoLatch } from "./paths.js";
-import { validateTask, type TaskDocument } from "./schema.js";
+import {
+  canonicalPolicy,
+  validatePolicy,
+  validateTask,
+  type LatchPolicy,
+  type TaskDocument,
+} from "./schema.js";
+import { readSession, SessionError, type SessionDocument } from "./session.js";
+import { enrichResolution } from "./map.js";
 
 export class SnapshotError extends Error {
   constructor(message: string) {
@@ -20,6 +28,8 @@ export type SnapshotMap = {
   state: "hit" | "miss" | "ambiguous";
   entryId: string | null;
   entryIds: string[];
+  location?: string | null;
+  observe?: string | null;
 };
 
 export type Snapshot = {
@@ -35,6 +45,9 @@ export type Snapshot = {
   /** sha256 of files the task points at, plus evidence files. */
   files: Record<string, string>;
   map: SnapshotMap | null;
+  session: SessionDocument | null;
+  /** null when the repo has no latch.policy.json. Invalid files throw. */
+  policy: LatchPolicy | null;
   hash: string;
   capturedAt: string;
 };
@@ -43,6 +56,7 @@ export type SnapshotInput = {
   added: string[];
   removed: string[];
   changedPaths: string[];
+  policy?: unknown;
 };
 
 function git(cwd: string, args: string[]): string | null {
@@ -85,6 +99,8 @@ export function snapshotHash(snapshot: {
   evidence: EvidenceFile[];
   files: Record<string, string>;
   map: SnapshotMap | null;
+  session: SessionDocument | null;
+  policy: LatchPolicy | null;
 }): string {
   return sha256({
     repo: snapshot.repo,
@@ -97,6 +113,8 @@ export function snapshotHash(snapshot: {
     evidence: [...snapshot.evidence].sort((a, b) => a.path.localeCompare(b.path)),
     files: stableFiles(snapshot.files),
     map: snapshot.map,
+    session: snapshot.session,
+    policy: snapshot.policy ? canonicalPolicy(snapshot.policy) : null,
   });
 }
 
@@ -166,6 +184,8 @@ function makeSnapshot(
     evidence?: EvidenceFile[];
     files?: Record<string, string>;
     map?: SnapshotMap | null;
+    session?: SessionDocument | null;
+    policy?: LatchPolicy | null;
   } = {},
 ): Snapshot {
   const draft = {
@@ -180,9 +200,54 @@ function makeSnapshot(
     evidence: extra.evidence ?? [],
     files: extra.files ?? {},
     map: extra.map ?? null,
+    session: extra.session ?? null,
+    policy: extra.policy ?? null,
     capturedAt: new Date().toISOString(),
   };
   return { ...draft, hash: snapshotHash(draft) };
+}
+
+export async function readPolicy(repo: string): Promise<LatchPolicy | null> {
+  const file = path.join(repo, "latch.policy.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new SnapshotError(`无法读取 latch.policy.json：${String(e)}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new SnapshotError(`latch.policy.json 不是 JSON：${String(e)}`);
+  }
+  const issues = validatePolicy(parsed);
+  if (issues.length) throw new SnapshotError(issues.join("；"));
+  return canonicalPolicy(parsed as LatchPolicy);
+}
+
+export async function inspectPolicy(
+  repo: string,
+): Promise<{ ok: boolean; text: string }> {
+  try {
+    const policy = await readPolicy(repo);
+    if (!policy) return { ok: true, text: "未启用（无 latch.policy.json）" };
+    if (!policy.changeDiscipline.enabled) return { ok: true, text: "未启用" };
+    return {
+      ok: true,
+      text: `已启用 · moduleConstCase=${policy.changeDiscipline.moduleConstCase}`,
+    };
+  } catch (e) {
+    return { ok: false, text: e instanceof SnapshotError ? e.message : String(e) };
+  }
+}
+
+function policyFromPayload(payload: SnapshotInput): LatchPolicy | null {
+  if (payload.policy === undefined || payload.policy === null) return null;
+  const issues = validatePolicy(payload.policy);
+  if (issues.length) throw new SnapshotError(issues.join("；"));
+  return canonicalPolicy(payload.policy as LatchPolicy);
 }
 
 /** Build a snapshot from a fixture payload (used by --window=fixture:<file> and tests). */
@@ -191,11 +256,17 @@ export function snapshotFromFixture(
   repo: string,
   window = "fixture",
 ): Snapshot {
-  return makeSnapshot(path.resolve(repo), window, null, {
-    added: payload.added ?? [],
-    removed: payload.removed ?? [],
-    changedPaths: payload.changedPaths ?? [],
-  });
+  return makeSnapshot(
+    path.resolve(repo),
+    window,
+    null,
+    {
+      added: payload.added ?? [],
+      removed: payload.removed ?? [],
+      changedPaths: payload.changedPaths ?? [],
+    },
+    { policy: policyFromPayload(payload) },
+  );
 }
 
 /**
@@ -301,7 +372,19 @@ export async function writeTaskFile(repo: string, task: TaskDocument): Promise<v
 
 async function attachContext(snapshot: Snapshot): Promise<Snapshot> {
   const task = await readTask(snapshot.repo);
-  const map = await readResolution(snapshot.repo);
+  let map: SnapshotMap | null;
+  try {
+    map = await enrichResolution(snapshot.repo, await readResolution(snapshot.repo));
+  } catch (e) {
+    throw new SnapshotError(e instanceof Error ? e.message : String(e));
+  }
+  let session: SessionDocument | null;
+  try {
+    session = await readSession(snapshot.repo);
+  } catch (e) {
+    if (e instanceof SessionError) throw new SnapshotError(e.message);
+    throw e;
+  }
   const files = { ...snapshot.files };
   for (const item of snapshot.evidence) files[item.path] = item.sha256;
   for (const item of task?.returns ?? []) {
@@ -314,7 +397,7 @@ async function attachContext(snapshot: Snapshot): Promise<Snapshot> {
     snapshot.window,
     snapshot.gitHead,
     snapshot,
-    { task, evidence: snapshot.evidence, files, map },
+    { task, evidence: snapshot.evidence, files, map, session, policy: snapshot.policy },
   );
 }
 
@@ -356,11 +439,13 @@ export async function collectSnapshot(
       changedPaths = [...nameOnly.split("\n").filter(Boolean), ...diffPaths(diff)];
     }
     return attachContext(
-      makeSnapshot(gitRoot, windowSpec, head, {
-        added: [],
-        removed: [],
-        changedPaths,
-      }, { evidence }),
+      makeSnapshot(
+        gitRoot,
+        windowSpec,
+        head,
+        { added: [], removed: [], changedPaths },
+        { evidence, policy: await readPolicy(gitRoot) },
+      ),
     );
   }
 
@@ -415,9 +500,12 @@ export async function collectSnapshot(
   }
 
   return attachContext(
-    makeSnapshot(gitRoot, windowSpec, head, {
-      ...parsed,
-      changedPaths,
-    }),
+    makeSnapshot(
+      gitRoot,
+      windowSpec,
+      head,
+      { ...parsed, changedPaths },
+      { policy: await readPolicy(gitRoot) },
+    ),
   );
 }
