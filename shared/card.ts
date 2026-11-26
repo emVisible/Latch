@@ -15,7 +15,7 @@ import {
   type LatchPolicy,
 } from "./schema.js";
 import { parseSkillMarkdown, validateSkill } from "./skill.js";
-import { authoringSplitIssue } from "./examSplit.js";
+import { authorGradeIssue, authoringSplitIssue } from "./examSplit.js";
 import { readNaive } from "./naive.js";
 import { collectSnapshot, snapshotFromFixture } from "./snapshot.js";
 
@@ -309,6 +309,8 @@ export async function examCard(
   root: string = CARDS_DIR,
 ): Promise<{ exitCode: number; message: string }> {
   try {
+    const author = await authorGradeIssue(cwd, name);
+    if (author) return { exitCode: 1, message: author };
     const { grade, gate } = await loadGrade(name, cwd, root);
     if (gate) return { exitCode: 1, message: gate };
     if (!grade.ok) {

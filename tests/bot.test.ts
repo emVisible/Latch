@@ -129,7 +129,11 @@ test("a fact with no feature hit fails", async () => {
       returns: [{ fact: "有笔记", path: "NOTES.md" }],
     });
     await openSession(repo, "desk");
-    await addSessionStep(repo, "NOTES.md", "NOTES.md");
+    await addSessionStep(repo, "NOTES.md", "NOTES.md", {
+      target: "desk",
+      position: "NOTES.md",
+      observe: "打开笔记文件",
+    });
     const run = await runBot(repo);
     const json = parseBot(run.stdout);
     assert.equal(run.code, 1, `${run.stderr}\n${run.stdout}`);
@@ -176,7 +180,11 @@ test("a session step that is not on the feature location fails", async () => {
       returns: [{ fact: "打开了笔记", path: "NOTES.md" }],
     });
     await openSession(repo, "desk");
-    await addSessionStep(repo, "src/charts/", "NOTES.md");
+    await addSessionStep(repo, "src/charts/", "NOTES.md", {
+      target: "desk",
+      position: "src/charts/",
+      observe: "打开笔记文件",
+    });
     const run = await runBot(repo);
     const json = parseBot(run.stdout);
     assert.equal(run.code, 1, `${run.stderr}\n${run.stdout}`);
@@ -200,7 +208,11 @@ test("a fact tied to the feature location and a session hash passes", async () =
       returns: [{ fact: "打开了笔记", path: "NOTES.md" }],
     });
     await openSession(repo, "desk");
-    await addSessionStep(repo, "NOTES.md", "NOTES.md");
+    await addSessionStep(repo, "NOTES.md", "NOTES.md", {
+      target: "desk",
+      position: "NOTES.md",
+      observe: "打开笔记文件",
+    });
     const run = await runBot(repo);
     const json = parseBot(run.stdout);
     assert.equal(run.code, 0, `${run.stderr}\n${run.stdout}`);

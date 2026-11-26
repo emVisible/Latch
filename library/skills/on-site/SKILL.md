@@ -1,9 +1,9 @@
 ---
 name: on-site
 description: >-
-  Accept a returned fact only when a session step sits on the feature-map
-  location and Latch hashed the evidence file. Use when a task needs a
-  click-through, a screenshot, or a sourced number.
+  Accept a returned fact only when the session list matches the feature map:
+  opened target, screenshot or export sha256, clicked position, location, and
+  observe. Use when a task needs a click-through, a screenshot, or a sourced number.
 ---
 
 # 走到现场
@@ -15,8 +15,8 @@ description: >-
 ## Sub-features
 
 - 任务没有回传事实：这一关放过。
-- 回传事实对上地图 `location`，且证据哈希是 Latch 读盘算出来的：通过。
-- 对不上这个位置，或哈希不是这次会话步骤算的：停下。
+- 回传事实对上地图 `location` 和 `observe`，打开的目标、点中的位置、证据哈希都在这次会话清单里，且哈希是 Latch 读盘算出来的：通过。
+- 目标、位置、observe 或哈希有一项对不上：停下。
 
 ## How to get to it (user POV)
 
@@ -26,10 +26,10 @@ description: >-
 
 ```bash
 latch session open --cwd <repo> --target <app>
-latch session step --cwd <repo> --at <地图 location> --evidence <文件>
+latch session step --cwd <repo> --at <地图 location> --position <点中的位置> --observe "<地图 observe>" --evidence <文件>
 ```
 
-`latch session step` 读证据文件并写入 sha256。回传事实的 `path` 必须被这一步的证据盖住，且这一步的 `--at` 就是地图上的 `location`。
+`latch session step` 读证据文件并写入 sha256。它不截屏、不启动 App、不记录指针。缺了打开的目标、点中的位置、observe 或证据文件就拒绝。回传事实的 `path` 必须被这一步的证据盖住，这一步的目标、位置、observe 必须对上地图条目。
 
 `latch bot next` 是硬门。回传事实没有同时绑上功能地图位置和 Latch 算出的会话证据哈希时，退出码 1。没有回传事实，或这两样都在，这一关才可以退出码 0。
 

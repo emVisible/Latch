@@ -26,6 +26,7 @@ test("init writes policy once, keeps AGENTS.md, and registers the repo", async (
     const saved = JSON.parse(await fs.readFile(settings, "utf8"));
     assert.equal(saved.targets.length, 1);
     assert.ok(first.lines.some((line) => line.includes("task open")));
+    assert.equal(first.lines.join("\n").includes("npm run latch"), false);
   } finally {
     await fs.rm(settings, { force: true });
     await cleanup(repo);

@@ -12,18 +12,18 @@ npm run dev            # API :8787（仅 127.0.0.1）+ Web :5173
 :5173 的页面只是库，只读列出技能和静态域。agent 运行 `latch next`、`latch map`、`latch map add`、`latch task`、`latch prove`、`latch daily`。也可以直接用命令：
 
 ```bash
-npm run latch -- init --cwd <repo>
-npm run latch -- task open --cwd <repo> --intent "看笔记" --durability once --writable NOTES.md
-npm run latch -- session open --cwd <repo> --target desk
-npm run latch -- session step --cwd <repo> --at NOTES.md --evidence NOTES.md
-npm run latch -- map desk --query "笔记" --cwd <repo>
-npm run latch -- route daily --cwd <repo>
+latch init --cwd <repo>
+latch task open --cwd <repo> --intent "看笔记" --durability once --writable NOTES.md
+latch session open --cwd <repo> --target desk
+latch session step --cwd <repo> --at NOTES.md --position NOTES.md --observe "打开笔记文件" --evidence NOTES.md
+latch map desk --query "笔记" --cwd <repo>
+latch route daily --cwd <repo>
 ```
 
 `init` 会写入 `latch.policy.json`（还没有的话）、`.latch/map.json` 空模板（还没有的话）、一份 `AGENTS.md` 空约定（还没有的话），并把仓库登记进本机 `settings.json`。它不安装 hook。hook 会带上会话锁，直到 `latch session end`。等 `daily` 的退出码符合预期再装：
 
 ```bash
-npm run latch -- hooks install --target <id>
+latch hooks install --target <id>
 ```
 
 被拦住时，日志里有一行「下一步」。改动纪律的开关和四条规则见 [docs/change-discipline.md](docs/change-discipline.md)。
@@ -42,35 +42,35 @@ npm run build
 
 ```bash
 # 编译体检：七项检查（覆盖/互斥/可达/引用/连通终止/孤儿/最小），写入 linkmap.json
-npm run latch -- check change-discipline
-npm run latch -- check daily
+latch check change-discipline
+latch check daily
 
 # 读取当前事实快照的原子真值
-npm run latch -- atoms --cwd <repo> --window worktree
+latch atoms --cwd <repo> --window worktree
 
 # 只打印编译结果，不执行、不写回执
-npm run latch -- route change-discipline --cwd <repo> --print
+latch route change-discipline --cwd <repo> --print
 
 # 日常入口：任务契约 →（policy 打开且有改动时）改动纪律 → 功能地图
-npm run latch -- route daily --cwd <repo> --window worktree
+latch route daily --cwd <repo> --window worktree
 
 # 显式跑改动纪律（没有 latch.policy.json 时退出 1）
-npm run latch -- route change-discipline --cwd <repo> --window worktree
+latch route change-discipline --cwd <repo> --window worktree
 
 # 回答具名 slot（唯一的模型写入通道，绑定 snapshotHash / routeHash / atomsHash）
-npm run latch -- slot daily style-drift=pass --cwd <repo>
+latch slot daily style-drift=pass --cwd <repo>
 
 # 为什么命中这条 link
-npm run latch -- explain change-discipline --cwd <repo>
+latch explain change-discipline --cwd <repo>
 
 # 规则说明层必须点名路由
-npm run latch -- rule change-discipline --route daily
+latch rule change-discipline --route daily
 
 # 体检：挂载归属、发现检查、hook 状态、linkmap 新鲜度、规范校验
-npm run latch -- doctor
+latch doctor
 
 # 机器人一轮：stdout 一条 JSON，只做下一行「下一步：」
-npm run latch -- bot next --cwd <repo>
+latch bot next --cwd <repo>
 ```
 
 目标仓库要让改动纪律在 `daily` 里生效，在仓库根目录放 `latch.policy.json`。没有这份文件时，`daily` 跳过纪律。说明见 [docs/change-discipline.md](docs/change-discipline.md)。本机挂载目标写在 `settings.json`（不入库，从 `settings.example.json` 复制）。

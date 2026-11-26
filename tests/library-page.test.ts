@@ -26,9 +26,9 @@ test("library page has no init, mount, or hook install control", async () => {
   for (const token of forbidden) {
     assert.equal(source.includes(token), false, token);
   }
-  assert.match(source, /未挂载/);
-  assert.match(source, /与库一致/);
-  assert.match(source, /需要重新部署/);
+  for (const token of ["部署", "重新部署", "挂载", "卸下", "未挂载", "与库一致", "需要重新部署", "getMounts"]) {
+    assert.equal(source.includes(token), false, token);
+  }
   const buttons = [...source.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1]);
   assert.ok(buttons.length > 0);
   for (const inner of buttons) {

@@ -243,6 +243,7 @@ test("daily with a harmless change waits for style-drift, then finishes the map"
     const waiting = await runRoute("daily", repo, { window: "worktree" });
     assert.equal(waiting.exitCode, 5, waiting.log.join("\n"));
     assert.equal(waiting.pendingSlot, "style-drift");
+    assert.equal(waiting.log.join("\n").includes("npm run latch"), false);
 
     await answerSlot("daily", "style-drift", "pass", repo, "worktree");
     const done = await runRoute("daily", repo, { window: "worktree" });

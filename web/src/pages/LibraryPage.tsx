@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type DomainSummary, type MountStatus, type SkillRecord, type SkillSummary } from "../api";
+import { api, type DomainSummary, type SkillRecord, type SkillSummary } from "../api";
 
 type DomainStepView = {
   id?: string;
@@ -17,12 +17,6 @@ type DomainView = {
   description: string;
   steps: DomainStepView[];
 };
-
-function mountLabel(status: MountStatus): string {
-  if (!status.exists) return "未挂载";
-  if (status.valid) return "与库一致";
-  return "需要重新部署";
-}
 
 function stepText(step: DomainStepView): string {
   if (step.kind === "read") return `读取 ${(step.paths ?? []).join("、")}`;
@@ -52,7 +46,6 @@ function asDomain(value: unknown): DomainView | null {
 
 export function LibraryPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
-  const [mountsBySkill, setMountsBySkill] = useState<Record<string, MountStatus[]>>({});
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [skill, setSkill] = useState<SkillRecord | null>(null);
@@ -62,13 +55,9 @@ export function LibraryPage() {
 
   useEffect(() => {
     Promise.all([api.listSkills(), api.listDomains()])
-      .then(async ([nextSkills, nextDomains]) => {
+      .then(([nextSkills, nextDomains]) => {
         setSkills(nextSkills);
         setDomains(nextDomains);
-        const entries = await Promise.all(
-          nextSkills.map(async (item) => [item.name, await api.getMounts(item.name)] as const),
-        );
-        setMountsBySkill(Object.fromEntries(entries));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"));
   }, []);
@@ -136,12 +125,6 @@ export function LibraryPage() {
                     <h2>{item.name}</h2>
                   </button>
                   <p>{item.description}</p>
-                  {(mountsBySkill[item.name] ?? []).map((status) => (
-                    <p key={status.targetId}>
-                      <span className={status.valid ? "pill pill-ok" : "pill pill-muted"}>{mountLabel(status)}</span>
-                      <span className="mono"> {status.targetId}</span>
-                    </p>
-                  ))}
                   {item.issues.map((issue) => (
                     <p key={issue} className="err">{issue}</p>
                   ))}

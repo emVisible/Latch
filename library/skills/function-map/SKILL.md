@@ -11,7 +11,7 @@ description: >-
 
 一条功能条目含这些字段：`id`，`aliases`（用户会怎么说），`location`（用户落到哪里），`observe`（必须看得见什么），`steps`（harness 要读哪些路径）。
 
-能接受的证据只有一种：会话步骤的 `--at` 等于这条 `location`，证据文件盖住回传事实的路径，sha256 由 `latch session step` 读盘写入。手写在任务上的哈希不算。只打开屏幕、看不见 `observe`，也不算。证明细则在 `on-site`。
+能接受的证据只有一种：会话清单记下打开的目标、截屏或导出的 sha256、点中的位置，并且 `--at` 与点中的位置都等于这条 `location`，`observe` 与条目一致，证据文件盖住回传事实的路径。sha256 由 `latch session step` 读盘写入。手写在任务上的哈希不算。只打开屏幕、看不见 `observe`，也不算。证明细则在 `on-site`。
 
 ## Sub-features
 

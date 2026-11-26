@@ -13,9 +13,15 @@ export async function coverSession(
   repo: string,
   at: string,
   evidence: string,
+  fields: { target?: string; position?: string; observe?: string } = {},
 ): Promise<void> {
-  if (!(await readSession(repo))) await openSession(repo, "desk");
-  await addSessionStep(repo, at, evidence);
+  const target = fields.target ?? "desk";
+  if (!(await readSession(repo))) await openSession(repo, target);
+  await addSessionStep(repo, at, evidence, {
+    target,
+    position: fields.position ?? at,
+    observe: fields.observe ?? "打开笔记文件",
+  });
 }
 
 export async function writePolicy(

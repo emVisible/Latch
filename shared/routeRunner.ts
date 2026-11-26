@@ -376,7 +376,7 @@ export async function runRoute(
         const windowArg =
           windowSpec === "worktree" ? "" : ` --window ${windowSpec}`;
         log.push(
-          `  作答：npm run latch -- slot ${name} ${to.slot}=pass --cwd ${snapshot.repo}${windowArg}`,
+          `  作答：latch slot ${name} ${to.slot}=pass --cwd ${snapshot.repo}${windowArg}`,
         );
         exitCode = 5;
         status = "awaiting-slot";
@@ -453,16 +453,16 @@ export async function runRoute(
 
 function stopHint(linkId: string, repo: string): string | null {
   if (linkId === "absent") {
-    return `下一步：npm run latch -- task open --cwd ${repo} --intent "<要做什么>" --durability once --writable <path>`;
+    return `下一步：latch task open --cwd ${repo} --intent "<要做什么>" --durability once --writable <path>`;
   }
   if (linkId === "breach") {
     return `下一步：要改的路径放进 --writable，或先提交不属于这次任务的文件`;
   }
   if (linkId === "inactive") {
-    return `下一步：npm run latch -- init --cwd ${repo}`;
+    return `下一步：latch init --cwd ${repo}`;
   }
   if (linkId === "miss" || linkId === "ambiguous" || linkId === "unset") {
-    return `下一步：npm run latch -- map desk --query "<说法>" --cwd ${repo}`;
+    return `下一步：latch map desk --query "<说法>" --cwd ${repo}`;
   }
   if (linkId === "stop-discipline") {
     return "下一步：按 diff 改掉违纪，再重跑同一条路由";

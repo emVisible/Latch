@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { atomReachableOnDaily, cardProblems, examCard, noteSightings, promoteCard } from "../shared/card.js";
+import { runDoctor } from "../shared/doctor.js";
 import { captureNaive } from "../shared/naive.js";
 import { readMap, resolveMap, writeResolution } from "../shared/map.js";
 import { acquireLease } from "../shared/lease.js";
@@ -209,6 +210,7 @@ test("daily runs the contract before the map", async () => {
     assert.equal(absent.exitCode, 1);
     assert.equal(absent.linkId, "absent");
     assert.ok(absent.log.some((line) => line.includes("task open")));
+    assert.equal(absent.log.join("\n").includes("npm run latch"), false);
 
     await writeTaskFile(repo, {
       intent: "看笔记",
@@ -332,6 +334,25 @@ test("once and an unbound slot cannot latch; a bound slot can, until the snapsho
     await fs.writeFile(cardPath, JSON.stringify(fake));
     const problems = await cardProblems("diff-use-effect", root);
     assert.ok(problems.some((item) => item.includes("不在 daily")));
+  } finally {
+    await cleanup(repo);
+  }
+});
+
+test("doctor fails when a latched card is outside the daily scope", async () => {
+  const repo = await makeRepo();
+  const root = path.join(repo, "cards");
+  try {
+    await copyCard("diff-use-effect", root);
+    const cardPath = path.join(root, "diff-use-effect", "card.json");
+    const card = JSON.parse(await fs.readFile(cardPath, "utf8"));
+    card.atom = "not-on-daily";
+    card.status = "latched";
+    await fs.writeFile(cardPath, JSON.stringify(card));
+    const text = await runDoctor({ cardsRoot: root });
+    assert.match(text, /!!\s+card diff-use-effect：/);
+    assert.match(text, /不在 daily 走得到的 scope 里/);
+    assert.equal(text.includes("npm run latch"), false);
   } finally {
     await cleanup(repo);
   }

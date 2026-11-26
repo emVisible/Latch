@@ -200,11 +200,11 @@ export async function initRepo(
       : `目标：settings.json 里已有 id=${target.id}`,
     "",
     "先提交刚写入的文件，避免它们被任务契约当成未声明的改动。然后：",
-    `  npm run latch -- task open --cwd ${root} --intent "<要做什么>" --durability once --writable <path>`,
-    `  npm run latch -- map desk --query "<说法>" --cwd ${root}`,
-    `  npm run latch -- route daily --cwd ${root}`,
+    `  latch task open --cwd ${root} --intent "<要做什么>" --durability once --writable <path>`,
+    `  latch map desk --query "<说法>" --cwd ${root}`,
+    `  latch route daily --cwd ${root}`,
     "钩子先不要装。daily 的退出码符合预期之后：",
-    `  npm run latch -- hooks install --target ${target.id}`,
+    `  latch hooks install --target ${target.id}`,
   ];
   return { root, target, targetCreated: created, wrotePolicy, wroteAgents, wroteMap, lines };
 }

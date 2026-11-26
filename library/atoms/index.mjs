@@ -117,8 +117,18 @@ export const atoms = {
       if (!item.sha256 || !actual || actual !== item.sha256 || !inSession) hits.push(item.path);
     }
     if (snapshot.map?.state === "hit") {
-      const location = snapshot.map.location;
-      if (!location || !steps.some((step) => step.at === location)) {
+      const location = snapshot.map.location || "";
+      const observe = snapshot.map.observe || "";
+      const target = snapshot.map.app || "";
+      const listed = steps.some(
+        (step) =>
+          step.target === target &&
+          step.position === location &&
+          step.at === location &&
+          step.observe === observe &&
+          step.sha256,
+      );
+      if (snapshot.session?.target !== target || !location || !observe || !listed) {
         hits.push(location || snapshot.map.entryId || "map");
       }
     }

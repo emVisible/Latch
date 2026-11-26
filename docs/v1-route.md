@@ -82,7 +82,7 @@ n ≤ 8 时穷举是 256 次，不需要 SAT，也不需要图数据库。
 仓库的 always-apply 不再写死 `latch run change-discipline`。改成：
 
 ```bash
-cd <latch> && npm run latch -- route change-discipline --cwd <repo>
+cd <latch> && latch route change-discipline --cwd <repo>
 ```
 
 `latch route` 的 stdout 是固定文本，不是建议：

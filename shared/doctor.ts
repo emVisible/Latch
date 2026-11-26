@@ -13,7 +13,7 @@ import { loadSettings } from "./settings.js";
 import { inspectPolicy } from "./snapshot.js";
 import { listSkills, readSkill } from "./skill.js";
 
-export async function runDoctor(): Promise<string> {
+export async function runDoctor(options: { cardsRoot?: string } = {}): Promise<string> {
   const lines: string[] = ["Latch · doctor", ""];
   let problems = 0;
   const note = (ok: boolean, text: string) => {
@@ -29,7 +29,7 @@ export async function runDoctor(): Promise<string> {
   const settingsIssues = validateSettings(settings);
   note(settingsIssues.length === 0, `settings.json：${settingsIssues.length ? settingsIssues.join("；") : "合法"}`);
   if (settings.targets.length === 0) {
-    lines.push("--  还没有挂载目标：npm run latch -- init --cwd <repo>");
+    lines.push("--  还没有挂载目标：latch init --cwd <repo>");
   }
 
   const skills = await listSkills();
@@ -53,8 +53,8 @@ export async function runDoctor(): Promise<string> {
     }
   }
 
-  for (const name of await listCards()) {
-    const issues = await cardProblems(name);
+  for (const name of await listCards(options.cardsRoot)) {
+    const issues = await cardProblems(name, options.cardsRoot);
     note(issues.length === 0, `card ${name}：${issues.length ? issues.join("；") : "原子与 skill 成对"}`);
   }
 
@@ -87,7 +87,7 @@ export async function runDoctor(): Promise<string> {
     const policy = await inspectPolicy(target.path);
     note(policy.ok, `target ${target.id} policy：${policy.text}`);
     if (policy.ok && policy.text.includes("无 latch.policy.json")) {
-      lines.push(`    下一步：npm run latch -- init --cwd ${target.path}`);
+      lines.push(`    下一步：latch init --cwd ${target.path}`);
     }
     for (const skill of skills) {
       const [status] = await scanMounts(skill, [target]);

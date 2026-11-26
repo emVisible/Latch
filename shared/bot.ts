@@ -125,18 +125,23 @@ function namedCard(intent: string, names: string[]): string | null {
   return others.length === 0 ? top : null;
 }
 
-/** A hand-written task.sha256 is not evidence. The step must sit on the map location Latch resolved, and Latch must have hashed the file. */
+/** A hand-written task.sha256 is not evidence. The step must match the opened target, the map location, and observe, and Latch must have hashed the file. */
 function missingFact(
   task: TaskDocument,
   session: SessionDocument | null,
-  location: string,
+  entry: { location: string; observe: string },
+  app: string,
 ): { reason: string; evidence: string } | null {
   if (task.returns.length === 0) return null;
   for (const item of task.returns) {
     if (!item.path) return { reason: item.fact, evidence: "<file>" };
     const covered = session?.steps.some(
       (step) =>
-        step.at === location &&
+        session?.target === app &&
+        step.target === app &&
+        step.at === entry.location &&
+        step.position === entry.location &&
+        step.observe === entry.observe &&
         evidenceCovers(step.evidence, item.path!) &&
         step.sha256.length > 0,
     );
@@ -219,7 +224,7 @@ export async function botNext(cwd: string): Promise<BotResult> {
     observe: entry.observe,
   });
 
-  const missing = missingFact(task, snapshot.session, entry.location);
+  const missing = missingFact(task, snapshot.session, entry, map.name);
   if (missing) {
     const next = latch(
       `prove --evidence ${q(missing.evidence)} --at ${q(entry.location)}`,

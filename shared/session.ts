@@ -16,6 +16,18 @@ export type SessionStep = {
   at: string;
   evidence: string;
   sha256: string;
+  /** App opened for this step. Latch does not launch it. */
+  target: string;
+  /** Position the caller says they hit. Latch does not read the pointer. */
+  position: string;
+  /** What the caller says was visible. Compared with the map entry's observe. */
+  observe: string;
+};
+
+export type SessionFields = {
+  target?: string;
+  position?: string;
+  observe?: string;
 };
 
 export type SessionDocument = {
@@ -52,12 +64,19 @@ export async function openSession(repo: string, target: string): Promise<Session
   return doc;
 }
 
+/**
+ * Writes the session checklist. The sha256 is of the screenshot or export the
+ * caller already saved. Latch does not capture the screen, start an app, or
+ * record the pointer. A missing target, position, observe, or evidence file is refused.
+ */
 export async function addSessionStep(
   repo: string,
   at: string,
   evidence: string,
+  fields: SessionFields = {},
 ): Promise<SessionStep> {
   if (!at.trim()) throw new SessionError("session step 需要 --at");
+  if (!evidence.trim()) throw new SessionError("session step 需要 --evidence");
   const raw = await fs.readFile(sessionFile(repo), "utf8").catch((e) => {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") {
       throw new SessionError("还没有会话，先 latch session open");
@@ -65,6 +84,12 @@ export async function addSessionStep(
     throw new SessionError(`无法读取会话：${String(e)}`);
   });
   const doc = JSON.parse(raw) as SessionDocument;
+  const target = (fields.target !== undefined ? fields.target : doc.target).trim();
+  if (!target) throw new SessionError("session step 需要打开的目标");
+  const position = (fields.position ?? "").trim();
+  if (!position) throw new SessionError("session step 需要点中的位置");
+  const observe = (fields.observe ?? "").trim();
+  if (!observe) throw new SessionError("session step 需要 --observe");
   const rel = relativeEvidence(repo, evidence);
   let sha256: string;
   try {
@@ -72,10 +97,33 @@ export async function addSessionStep(
   } catch {
     throw new SessionError(`证据文件不存在：${rel}`);
   }
-  const step: SessionStep = { at: at.trim(), evidence: rel, sha256 };
+  const step: SessionStep = {
+    at: at.trim(),
+    evidence: rel,
+    sha256,
+    target,
+    position,
+    observe,
+  };
   doc.steps.push(step);
   await fs.writeFile(sessionFile(repo), `${JSON.stringify(doc, null, 2)}\n`, "utf8");
   return step;
+}
+
+function isStep(step: unknown): step is SessionStep {
+  if (typeof step !== "object" || step === null) return false;
+  const item = step as SessionStep;
+  return (
+    typeof item.at === "string" &&
+    typeof item.evidence === "string" &&
+    typeof item.sha256 === "string" &&
+    typeof item.target === "string" &&
+    item.target.trim() !== "" &&
+    typeof item.position === "string" &&
+    item.position.trim() !== "" &&
+    typeof item.observe === "string" &&
+    item.observe.trim() !== ""
+  );
 }
 
 /** Missing file is an empty session. A stored hash that no longer matches the file fails the snapshot. */
@@ -97,32 +145,31 @@ export async function readSession(repo: string): Promise<SessionDocument | null>
     typeof parsed !== "object" ||
     parsed === null ||
     typeof (parsed as { target?: unknown }).target !== "string" ||
+    !(parsed as { target: string }).target.trim() ||
     !Array.isArray((parsed as { steps?: unknown }).steps)
   ) {
     throw new SessionError("会话不合法");
   }
   const steps: SessionStep[] = [];
   for (const step of (parsed as { steps: unknown[] }).steps) {
-    if (
-      typeof step !== "object" ||
-      step === null ||
-      typeof (step as SessionStep).at !== "string" ||
-      typeof (step as SessionStep).evidence !== "string" ||
-      typeof (step as SessionStep).sha256 !== "string"
-    ) {
-      throw new SessionError("会话步骤不合法");
-    }
-    const item = step as SessionStep;
+    if (!isStep(step)) throw new SessionError("会话步骤不合法");
     let actual: string;
     try {
-      actual = await hashFile(path.join(repo, item.evidence));
+      actual = await hashFile(path.join(repo, step.evidence));
     } catch {
-      throw new SessionError(`会话证据已变：${item.evidence}`);
+      throw new SessionError(`会话证据已变：${step.evidence}`);
     }
-    if (actual !== item.sha256) {
-      throw new SessionError(`会话证据已变：${item.evidence}`);
+    if (actual !== step.sha256) {
+      throw new SessionError(`会话证据已变：${step.evidence}`);
     }
-    steps.push({ at: item.at, evidence: item.evidence, sha256: item.sha256 });
+    steps.push({
+      at: step.at,
+      evidence: step.evidence,
+      sha256: step.sha256,
+      target: step.target,
+      position: step.position,
+      observe: step.observe,
+    });
   }
   return { target: (parsed as { target: string }).target, steps };
 }

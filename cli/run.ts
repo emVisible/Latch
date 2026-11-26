@@ -42,7 +42,7 @@ function usage() {
                                           写 policy、补 AGENTS.md、登记目标。不装 hook
   latch target add <path> [--id <id>] [--skill-dir <dir>]
   latch session open --cwd <repo> --target <app>
-  latch session step --cwd <repo> --at <location> --evidence <file>
+  latch session step --cwd <repo> --at <location> --position <位置> --observe <文字> --evidence <文件>
   latch session end --cwd <repo>
   latch run <domain> [--cwd <repo>]        单域调试（slot 未答即失败）
   latch rule <domain> [--write --target <id>] [--route <name>]
@@ -72,7 +72,7 @@ function usageShort() {
   latch task "<要做什么>" --once|--lasting [--writable <path>] [--fact <文字> --source <path>]
   latch map "<说法>"
   latch map add
-  latch prove --evidence <file> [--at <location>]
+  latch prove --evidence <file> [--at <location> --position <位置> --observe <文字>]
   latch next
   latch daily
   latch help all    打印维护命令`);
@@ -604,7 +604,7 @@ async function cmdSession(args: Args): Promise<number> {
   const cwd = str(args.flags, "cwd");
   if (!cwd) {
     console.error(
-      "用法：latch session open --cwd <repo> --target <app> | step --cwd <repo> --at <location> --evidence <file> | end --cwd <repo>",
+      "用法：latch session open --cwd <repo> --target <app> | step --cwd <repo> --at <location> --position <位置> --observe <文字> --evidence <文件> | end --cwd <repo>",
     );
     return 2;
   }
@@ -615,12 +615,18 @@ async function cmdSession(args: Args): Promise<number> {
       return 0;
     }
     if (action === "step") {
+      const target = str(args.flags, "target");
       const step = await addSessionStep(
         path.resolve(cwd),
         str(args.flags, "at"),
         str(args.flags, "evidence"),
+        {
+          ...(target ? { target } : {}),
+          position: str(args.flags, "position"),
+          observe: str(args.flags, "observe"),
+        },
       );
-      output(`${step.at} ${step.evidence} ${step.sha256}`);
+      output(`${step.target} ${step.position} ${step.observe} ${step.evidence} ${step.sha256}`);
       return 0;
     }
     if (action === "end") {
@@ -633,7 +639,7 @@ async function cmdSession(args: Args): Promise<number> {
     return e instanceof SessionError ? 2 : 1;
   }
   console.error(
-    "用法：latch session open --cwd <repo> --target <app> | step --cwd <repo> --at <location> --evidence <file> | end --cwd <repo>",
+    "用法：latch session open --cwd <repo> --target <app> | step --cwd <repo> --at <location> --position <位置> --observe <文字> --evidence <文件> | end --cwd <repo>",
   );
   return 2;
 }
@@ -646,7 +652,9 @@ async function cmdProve(args: Args): Promise<number> {
     return 2;
   }
   let at = str(args.flags, "at");
-  let target = "desk";
+  let target = str(args.flags, "target") || "desk";
+  let observe = str(args.flags, "observe");
+  let position = str(args.flags, "position");
   if (!at) {
     const task = await readOpenTask(repo);
     if (!task) {
@@ -671,18 +679,27 @@ async function cmdProve(args: Args): Promise<number> {
     }
     at = entry.location;
     target = map.name;
+    if (!observe) observe = entry.observe;
+    if (!position) position = entry.location;
   } else {
     try {
-      target = (await loadRepoMap(repo)).name;
+      const map = await loadRepoMap(repo);
+      if (!str(args.flags, "target")) target = map.name;
+      if (!observe || !position) {
+        const entry = map.entries.find((item) => item.location === at);
+        if (!observe && entry) observe = entry.observe;
+        if (!position && entry) position = entry.location;
+      }
     } catch {
-      target = "desk";
+      if (!str(args.flags, "target")) target = "desk";
     }
+    if (!position) position = at;
   }
   try {
     const existing = await readSession(repo);
     if (!existing) await openSession(repo, target);
-    const step = await addSessionStep(repo, at, evidence);
-    output(`${step.at} ${step.evidence} ${step.sha256}`);
+    const step = await addSessionStep(repo, at, evidence, { target, position, observe });
+    output(`${step.target} ${step.position} ${step.observe} ${step.evidence} ${step.sha256}`);
     return 0;
   } catch (e) {
     console.error(e instanceof SessionError ? e.message : e instanceof Error ? e.message : String(e));

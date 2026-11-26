@@ -16,6 +16,7 @@ export type LoopView = {
     state: string;
     entryId: string | null;
     location: string | null;
+    observe: string | null;
     query: string;
   } | null;
   cards: { name: string; status: string; atom: string; onDaily: boolean }[];
@@ -60,6 +61,7 @@ async function readMap(cwd: string): Promise<LoopView["map"]> {
       state: enriched?.state ?? "miss",
       entryId: enriched?.entryId ?? null,
       location: enriched?.location ?? null,
+      observe: enriched?.observe ?? null,
       query: enriched?.query ?? "",
     };
   } catch {
@@ -81,37 +83,49 @@ function decide(view: Omit<LoopView, "next" | "nextKind">): { nextKind: LoopView
   if (!view.task) {
     return {
       nextKind: "task",
-      next: `npm run latch -- task open --cwd ${view.cwd} --intent "<要做什么>" --durability once --writable <path>`,
+      next: `latch task open --cwd ${view.cwd} --intent "<要做什么>" --durability once --writable <path>`,
     };
   }
   if (view.sessionError) {
     return { nextKind: "daily", next: view.sessionError };
   }
   if (view.lease?.alive && view.lease.session) {
-    return { nextKind: "session-end", next: `npm run latch -- session end --cwd ${view.cwd}` };
+    return { nextKind: "session-end", next: `latch session end --cwd ${view.cwd}` };
   }
   if (!view.map || view.map.state === "miss" || view.map.state === "ambiguous") {
     return {
       nextKind: "map",
-      next: `npm run latch -- map ${view.mapApp} --query "<说法>" --cwd ${view.cwd}`,
+      next: `latch map ${view.mapApp} --query "<说法>" --cwd ${view.cwd}`,
     };
   }
   if (view.map.state === "hit") {
-    const covered = view.session?.steps.some((step) => step.at === view.map?.location);
-    if (!view.map.location || !covered) {
+    const location = view.map.location;
+    const observe = view.map.observe;
+    const covered = view.session?.steps.some(
+      (step) =>
+        view.session?.target === view.mapApp &&
+        step.target === view.mapApp &&
+        step.at === location &&
+        step.position === location &&
+        step.observe === observe &&
+        step.sha256,
+    );
+    if (!location || !observe || !covered) {
       if (!view.session) {
         return {
           nextKind: "session-open",
-          next: `npm run latch -- session open --cwd ${view.cwd} --target ${view.mapApp}`,
+          next: `latch session open --cwd ${view.cwd} --target ${view.mapApp}`,
         };
       }
+      const at = location ?? "<location>";
+      const seen = observe ?? "<observe>";
       return {
         nextKind: "session-step",
-        next: `npm run latch -- session step --cwd ${view.cwd} --at ${view.map.location ?? "<location>"} --evidence <file>`,
+        next: `latch session step --cwd ${view.cwd} --at ${at} --position ${at} --observe "${seen}" --evidence <file>`,
       };
     }
   }
-  return { nextKind: "daily", next: `npm run latch -- route daily --cwd ${view.cwd}` };
+  return { nextKind: "daily", next: `latch route daily --cwd ${view.cwd}` };
 }
 
 export async function loopView(cwd: string): Promise<LoopView> {
